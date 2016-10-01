@@ -35,13 +35,11 @@ import Data.Kind
 import Data.Monoid (First, Last, All, Any, Alt(..))
 import Data.Ord (Down(..))
 import Data.Proxy
-import Data.Rec
 import Data.Unique
 import Data.Version (Version)
 import Data.Void
 import Data.Word
 import Data.X
-import Data.X.Map.TH
 import Foreign.C.Error (Errno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, WordPtr, IntPtr)
@@ -65,6 +63,10 @@ import System.Posix.Types
 import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
+
+import Data.X.Map.TH {-# SOURCE #-} (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances')
+import Data.Recurse (Locking(..), Recurse(..))
+
 
 -- type Setter s t a b = forall f. Settable f => (a -> f b) -> s -> f t
 

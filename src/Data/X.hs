@@ -25,6 +25,8 @@ import Data.Kind
 -- coerced to and from using `pure`/`return` and `extract`.
 -- As an uninhabited type, it is used in type families
 -- and is effectively a unit type with phantom argument.
+--
+-- Note: Need to make 100% sure that none of these operations can kill `XX`. Or at least accidentally.
 newtype X (a :: k) = X { getX :: Any }
 
 

@@ -1,7 +1,11 @@
-
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeInType #-}
 
 -- | Rename to Data.Recurse.Recursing
-module Data.Rec.Recurse where
+module Data.Recurse.Recursing where
 
 import Data.Rec
 import Data.X
@@ -10,12 +14,12 @@ import Data.X.Map
 
 
 class Recursing (a :: *) where
-  type RecBuilder a t :: *
-  rec :: (forall t. RecBuilder a t) -> Rec a
+  type RecursingBuilder a t :: *
+  rec :: (forall t. RecursingBuilder a t) -> Recurse Locked a
 
-instance Recursing (Int, XX k) where
-  type RecBuilder (Int, XX k) t = (Int, Rec t) -> (Int, Rec (Int, Rec t))
-  rec r = let t = r t in Rec t
+-- instance Recursing (Int, XX k) where
+--   type RecBuilder (Int, XX k) t = (Int, Rec t) -> (Int, Rec (Int, Rec t))
+--   rec r = let t = r t in Rec t
 
 
 -- Here is the control flow for deriving the types:
@@ -106,51 +110,51 @@ instance Recursing (Int, XX k) where
 -- class Recurse
 
 
-t1 :: forall t. t -> (Integer, t)
-t1 = \x -> (0, x)
+-- t1 :: forall t. t -> (Integer, t)
+-- t1 = \x -> (0, x)
 
-t1' :: forall t. (Integer, Rec t) -> (Integer, Rec (Integer, Rec t))
-t1' = \x -> (0, Rec x)
+-- t1' :: forall t. (Integer, Rec t) -> (Integer, Rec (Integer, Rec t))
+-- t1' = \x -> (0, Rec x)
 
-r1 :: Rec (Integer, XX k)
-r1 = undefined
+-- r1 :: Rec (Integer, XX k)
+-- r1 = undefined
 
--- | Trivial conversion
-r1' :: Rec (Integer, XX k)
-r1' = undefined
-
-
-t2 :: forall t. (Integer, t) -> (Integer, (Integer, t))
-t2 = \x -> (0, first (+1) x)
-
-t2' :: forall t. (Integer, Rec t) -> (Integer, Rec (Integer, Rec t))
-t2' = \x -> (0, Rec $ first (+1) x)
-
-r2 :: Rec (Integer, (Integer, XX k))
-r2 = undefined
-
-r2' :: Rec (Integer, XX k)
-r2' = undefined
+-- -- | Trivial conversion
+-- r1' :: Rec (Integer, XX k)
+-- r1' = undefined
 
 
--- Not sure about this one
-t3 :: forall a d. (a -> (Integer, d)) -> Integer -> (Integer, a -> (Integer, d))
-t3 = \x -> \y -> (y + 1, (first ((+1)$) . x))
+-- t2 :: forall t. (Integer, t) -> (Integer, (Integer, t))
+-- t2 = \x -> (0, first (+1) x)
+
+-- t2' :: forall t. (Integer, Rec t) -> (Integer, Rec (Integer, Rec t))
+-- t2' = \x -> (0, Rec $ first (+1) x)
+
+-- r2 :: Rec (Integer, (Integer, XX k))
+-- r2 = undefined
+
+-- r2' :: Rec (Integer, XX k)
+-- r2' = undefined
 
 
-instance Functor ((,,) a b) where
-  fmap f (x,y,z) = (x,y,f z)
+-- -- Not sure about this one
+-- t3 :: forall a d. (a -> (Integer, d)) -> Integer -> (Integer, a -> (Integer, d))
+-- t3 = \x -> \y -> (y + 1, (first ((+1)$) . x))
 
-t4 :: forall t. (t, t, Integer) -> ((t, t, Integer), (t, t, Integer), Integer)
-t4 = \x -> ((*2) <$> x, (+1).(*2) <$> x, 0)
 
-t4' :: forall t. (Rec t, Rec t, Integer) -> (Rec (Rec t, Rec t, Integer), Rec (Rec t, Rec t, Integer), Integer)
-t4' = undefined -- \x -> (fmap (*1) <$> x, fmap ((+1).(*2)) <$> x, 0)
+-- instance Functor ((,,) a b) where
+--   fmap f (x,y,z) = (x,y,f z)
 
-r4 :: Rec ((XX k, XX k, Integer), (XX k, XX k, Integer), Integer)
-r4 = undefined
+-- t4 :: forall t. (t, t, Integer) -> ((t, t, Integer), (t, t, Integer), Integer)
+-- t4 = \x -> ((*2) <$> x, (+1).(*2) <$> x, 0)
 
-r4' :: Rec (XX k, XX k, Integer)
-r4' = undefined
+-- t4' :: forall t. (Rec t, Rec t, Integer) -> (Rec (Rec t, Rec t, Integer), Rec (Rec t, Rec t, Integer), Integer)
+-- t4' = undefined -- \x -> (fmap (*1) <$> x, fmap ((+1).(*2)) <$> x, 0)
+
+-- r4 :: Rec ((XX k, XX k, Integer), (XX k, XX k, Integer), Integer)
+-- r4 = undefined
+
+-- r4' :: Rec (XX k, XX k, Integer)
+-- r4' = undefined
 
 

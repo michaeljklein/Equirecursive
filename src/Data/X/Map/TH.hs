@@ -7,13 +7,14 @@
 module Data.X.Map.TH where
 
 import Language.Haskell.TH
--- import Data.X.Map (XMap(..), xmapFunctor, ymapFunctor, xmapBifunctor, ymapBifunctor)
 import Data.String
 import Control.Monad
 import Data.Bifunctor (Bifunctor())
 import Data.Foldable (toList)
-import Data.X
-import Data.Rec
+
+import Data.Recurse (Locking(..), Recurse(..))
+import Data.X.Map {-# SOURCE #-} (XMap(..), xmapFunctor, ymapFunctor, xmapBifunctor, ymapBifunctor)
+
 
 instance IsString Name where
   fromString = mkName
