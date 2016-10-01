@@ -18,7 +18,6 @@ library
   exposed-modules:     Data.X
                      , Data.X.Map
                      , Data.X.Map.TH
-                     , Data.X.Map.Builders
                      , Data.Recurse
                      , Data.Recurse.Recursing
   ghc-options:         -Wall

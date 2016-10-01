@@ -4,17 +4,15 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Data.X.Map.TH (baseInstances, functorInstances, constrainedFunctorInstances, bifunctorInstances, (~>)) where
+module Data.X.Map.TH where
 
 import Language.Haskell.TH
+-- import Data.X.Map (XMap(..), xmapFunctor, ymapFunctor, xmapBifunctor, ymapBifunctor)
 import Data.String
 import Control.Monad
 import Data.Bifunctor (Bifunctor())
 import Data.Foldable (toList)
-
 import Data.Recurse (Locking(..), Recurse(..))
-import Data.X.Map {-# SOURCE #-} (XMap(..))
-import Data.X.Map.Builders {-# SOURCE #-} (xmapFunctor, xmapBifunctor, ymapFunctor, ymapBifunctor)
 
 instance IsString Name where
   fromString = mkName
@@ -24,27 +22,27 @@ instance IsString TypeQ where
 
 data XMaps = XMaps { cls :: Name, xmp :: Name, ymp :: Name, xmpFunctor :: Name, ympFunctor :: Name, xmpBifunctor :: Name, ympBifunctor :: Name }
 
-xmaps =  XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor
+-- XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor
 
 -- | Make zero or more instances
 instances :: Traversable t => (a -> DecQ) -> t a -> DecsQ
 instances f = fmap toList . sequence . fmap f
 
 -- | Convenience function
-baseInstances :: [Name] -> DecsQ
-baseInstances = instances (baseInstance xmape)
+baseInstances' :: XMaps -> [Name] -> DecsQ
+baseInstances' x = instances (baseInstance x)
 
 -- | Convenience function
-functorInstances :: [TypeQ] -> DecsQ
-functorInstances = instances (functorInstance xmaps)
+functorInstances' :: XMaps -> [TypeQ] -> DecsQ
+functorInstances' x = instances (functorInstance x)
 
 -- | Convenience function
-constrainedFunctorInstances :: [(TypeQ, TypeQ)] -> DecsQ
-constrainedFunctorInstances = instances (constrainedFunctorInstance xmaps)
+constrainedFunctorInstances' :: XMaps -> [(TypeQ, TypeQ)] -> DecsQ
+constrainedFunctorInstances' x = instances (constrainedFunctorInstance x)
 
 -- | Convenience function
-bifunctorInstances :: [TypeQ] -> DecsQ
-bifunctorInstances = instances (bifunctorInstance xmaps)
+bifunctorInstances' :: XMaps -> [TypeQ] -> DecsQ
+bifunctorInstances' x = instances (bifunctorInstance x)
 
 
 
