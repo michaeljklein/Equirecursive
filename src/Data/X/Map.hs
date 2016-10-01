@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -51,6 +52,7 @@ import GHC.IO.Device (IODeviceType, SeekMode)
 import GHC.IO.Encoding.Types (CodingProgress)
 import GHC.IO.Handle (Handle, BufferMode, NewlineMode, HandlePosn)
 import GHC.TypeLits (SomeNat, SomeSymbol)
+import Language.Haskell.TH (conT, varT)
 import Numeric.Natural
 import Prelude hiding (id, (.))
 import System.Console.GetOpt (ArgOrder, OptDescr, ArgDescr)
@@ -61,7 +63,6 @@ import System.Posix.Types
 import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
-import Language.Haskell.TH (conT)
 
 -- type Setter s t a b = forall f. Settable f => (a -> f b) -> s -> f t
 
@@ -283,11 +284,23 @@ $(functorInstances'
   , conT ''V1
   , conT ''U1
   , conT ''Par1
+  , conT ''ST   ~>  varT "st"
+  , conT ''URec ~>  conT ''Char
+  , conT ''URec ~>  conT ''Double
+  , conT ''URec ~>  conT ''Float
+  , conT ''URec ~>  conT ''Int
+  , conT ''URec ~>  conT ''Word
+  , conT ''URec ~> (conT ''Ptr ~> conT ''())
   ])
 
-instance XMap s t a b => XMap (ST st s) (ST st t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
+$(bifunctorInstances'
+  (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
+  [ ''(,)
+  , ''Either
+  , ''Const
+  , ''Constant
+  ])
+
 
 instance (Arrow ar, XMap s t a b) => XMap (ArrowMonad ar s) (ArrowMonad ar t) a b where
   xmap = xmapFunctor
@@ -298,30 +311,6 @@ instance (Monad m, XMap s t a b) => XMap (WrappedMonad m s) (WrappedMonad m t) a
   ymap = ymapFunctor
 
 instance (Functor f, XMap s t a b) => XMap (Rec1 f s) (Rec1 f t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec Char s) (URec Char t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec Double s) (URec Double t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec Float s) (URec Float t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec Int s) (URec Int t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec Word s) (URec Word t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (URec (Ptr ()) s) (URec (Ptr ()) t) a b where
   xmap = xmapFunctor
   ymap = ymapFunctor
 
@@ -346,27 +335,10 @@ instance (Functor f, XMap s t a b) => XMap (Reverse f s) (Reverse f t) a b where
   xmap = xmapWithFunctor Reverse getReverse
   ymap = ymapWithFunctor Reverse getReverse
 
-
 instance (Functor f, XMap s t a b) => XMap (Alt f s) (Alt f t) a b where
   xmap = xmapWithFunctor Alt getAlt
   ymap = ymapWithFunctor Alt getAlt
 
-
-instance (XMap s0 t0 a b, XMap s1 t1 a b) => XMap (s0, s1) (t0, t1) a b where
-  xmap = xmapBifunctor
-  ymap = ymapBifunctor
-
-instance (XMap s0 t0 a b, XMap s1 t1 a b) => XMap (Either s0 s1) (Either t0 t1) a b where
-  xmap = xmapBifunctor
-  ymap = ymapBifunctor
-
-instance (XMap s0 t0 a b, XMap s1 t1 a b) => XMap (Const s0 s1) (Const t0 t1) a b where
-  xmap = xmapBifunctor
-  ymap = ymapBifunctor
-
-instance (XMap s0 t0 a b, XMap s1 t1 a b) => XMap (Constant s0 s1) (Constant t0 t1) a b where
-  xmap = xmapBifunctor
-  ymap = ymapBifunctor
 
 
 instance (XMap (f s) (f t) a b, XMap (g s) (g t) a b) => XMap ((f :+: g) s) ((f :+: g) t) a b where
