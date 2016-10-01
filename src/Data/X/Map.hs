@@ -51,7 +51,6 @@ import GHC.IO.Device (IODeviceType, SeekMode)
 import GHC.IO.Encoding.Types (CodingProgress)
 import GHC.IO.Handle (Handle, BufferMode, NewlineMode, HandlePosn)
 import GHC.TypeLits (SomeNat, SomeSymbol)
-import Language.Haskell.TH (Name, DecsQ)
 import Numeric.Natural
 import Prelude hiding (id, (.))
 import System.Console.GetOpt (ArgOrder, OptDescr, ArgDescr)
@@ -151,443 +150,124 @@ pairMap :: (f a -> f b) -> (g a -> g b) -> Product f g a -> Product f g b
 pairMap f g (Pair x y) = Pair (f x) (g y)
 
 
-$(baseInstances' (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor) [''Bool])
+$(baseInstances'
+  (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
+  [  ''Bool
+   , ''Char
+   , ''Double
+   , ''Float
+   , ''Int
+   , ''Int8
+   , ''Int16
+   , ''Int32
+   , ''Int64
+   , ''Integer
+   , ''Ordering
+   , ''Word
+   , ''Word8
+   , ''Word16
+   , ''Word32
+   , ''Word64
+   , ''TypeRep
+   , ''()
+   , ''Number
+   , ''Lexeme
+   , ''GeneralCategory
+   , ''Fingerprint
+   , ''TyCon
+   , ''Associativity
+   , ''Any
+   , ''All
+   , ''ArithException
+   , ''ErrorCall
+   , ''IOException
+   , ''MaskingState
+   , ''CUIntMax
+   , ''CIntMax
+   , ''CUIntPtr
+   , ''CIntPtr
+   , ''CSUSeconds
+   , ''CUSeconds
+   , ''CTime
+   , ''CClock
+   , ''CSigAtomic
+   , ''CWchar
+   , ''CSize
+   , ''CPtrdiff
+   , ''CDouble
+   , ''CFloat
+   , ''CULLong
+   , ''CLLong
+   , ''CULong
+   , ''CLong
+   , ''CUInt
+   , ''CInt
+   , ''CUShort
+   , ''CShort
+   , ''CUChar
+   , ''CSChar
+   , ''CChar
+   , ''IntPtr
+   , ''WordPtr
+   , ''BufferState
+   , ''CodingProgress
+   , ''SeekMode
+   , ''IODeviceType
+   , ''NewlineMode
+   , ''Newline
+   , ''BufferMode
+   , ''Handle
+   , ''IOErrorType
+   , ''ExitCode
+   , ''ArrayException
+   , ''AsyncException
+   , ''Errno
+   , ''Fd
+   , ''CRLim
+   , ''CTcflag
+   , ''CSpeed
+   , ''CCc
+   , ''CUid
+   , ''CNlink
+   , ''CGid
+   , ''CSsize
+   , ''CPid
+   , ''COff
+   , ''CMode
+   , ''CIno
+   , ''CDev
+   , ''ThreadStatus
+   , ''BlockReason
+   , ''ThreadId
+   , ''IOMode
+   , ''HandlePosn
+   , ''Version
+   , ''ConstrRep
+   , ''DataRep
+   , ''Constr
+   , ''Natural
+   , ''SomeSymbol
+   , ''SomeNat
+   , ''SpecConstrAnnotation
+   , ''Unique
+   , ''Void
+   , ''R
+   , ''D
+   , ''C
+   , ''S
+   , ''Fixity
+   , ''FixityI
+   , ''SourceUnpackedness
+   , ''SourceStrictness
+   , ''DecidedStrictness
+   , ''Meta
+   ])
+
+-- $(functorInstances'
+--   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
+--   [  ''Bool
+--    , ''Char
 
--- instance XMap Bool Bool a b where
---   xmap _ = pure
---   ymap _ = pure
-
-instance XMap Char Char a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Double Double a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Float Float a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Int Int a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Int8 Int8 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Int16 Int16 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Int32 Int32 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Int64 Int64 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Integer Integer a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Ordering Ordering a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Word Word a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Word8 Word8 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Word16 Word16 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Word32 Word32 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Word64 Word64 a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap TypeRep TypeRep a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap () () a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Number Number a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Lexeme Lexeme a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap GeneralCategory GeneralCategory a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Fingerprint Fingerprint a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap TyCon TyCon a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Associativity Associativity a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Any Any a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap All All a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ArithException ArithException a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ErrorCall ErrorCall a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap IOException IOException a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap MaskingState MaskingState a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUIntMax CUIntMax a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CIntMax CIntMax a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUIntPtr CUIntPtr a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CIntPtr CIntPtr a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSUSeconds CSUSeconds a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUSeconds CUSeconds a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CTime CTime a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CClock CClock a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSigAtomic CSigAtomic a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CWchar CWchar a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSize CSize a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CPtrdiff CPtrdiff a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CDouble CDouble a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CFloat CFloat a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CULLong CULLong a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CLLong CLLong a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CULong CULong a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CLong CLong a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUInt CUInt a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CInt CInt a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUShort CUShort a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CShort CShort a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUChar CUChar a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSChar CSChar a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CChar CChar a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap IntPtr IntPtr a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap WordPtr WordPtr a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap BufferState BufferState a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CodingProgress CodingProgress a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SeekMode SeekMode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap IODeviceType IODeviceType a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap NewlineMode NewlineMode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Newline Newline a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap BufferMode BufferMode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Handle Handle a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap IOErrorType IOErrorType a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ExitCode ExitCode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ArrayException ArrayException a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap AsyncException AsyncException a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Errno Errno a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Fd Fd a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CRLim CRLim a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CTcflag CTcflag a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSpeed CSpeed a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CCc CCc a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CUid CUid a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CNlink CNlink a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CGid CGid a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CSsize CSsize a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CPid CPid a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap COff COff a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CMode CMode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CIno CIno a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap CDev CDev a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ThreadStatus ThreadStatus a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap BlockReason BlockReason a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ThreadId ThreadId a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap IOMode IOMode a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap HandlePosn HandlePosn a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Version Version a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap ConstrRep ConstrRep a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap DataRep DataRep a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Constr Constr a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Natural Natural a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SomeSymbol SomeSymbol a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SomeNat SomeNat a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SpecConstrAnnotation SpecConstrAnnotation a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Unique Unique a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Void Void a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap R R a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap D D a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap C C a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap S S a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Fixity Fixity a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap FixityI FixityI a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SourceUnpackedness SourceUnpackedness a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap SourceStrictness SourceStrictness a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap DecidedStrictness DecidedStrictness a b where
-  xmap _ = pure
-  ymap _ = pure
-
-instance XMap Meta Meta a b where
-  xmap _ = pure
-  ymap _ = pure
 
 
 instance XMap s t a b => XMap [s] [t] a b where
