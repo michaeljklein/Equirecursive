@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Data.X.Map.TH where
 
@@ -23,12 +24,16 @@ data XMaps = XMaps { cls :: Name, xmp :: Name, ymp :: Name, xmpFunctor :: Name, 
 
 -- XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor
 
+-- | Make zero or more instances
+instances :: Traversable t => (a -> DecQ) -> t a -> DecsQ
+instances f = fmap toList . sequence . fmap f
+
 -- | Convenience function
 baseInstances' :: XMaps -> [Name] -> DecsQ
 baseInstances' x = instances (baseInstance x)
 
 -- | Convenience function
-functorInstances' :: XMaps -> [Name] -> DecsQ
+functorInstances' :: XMaps -> [TypeQ] -> DecsQ
 functorInstances' x = instances (functorInstance x)
 
 -- | Convenience function
@@ -54,10 +59,6 @@ xMapN x n = xMap x ( varT . mkName . ('s':) . show $ n
                    , varT . mkName . ('t':) . show $ n
                    , "a"
                    , "b")
-
--- | Make zero or more instances
-instances :: Traversable t => (Name -> DecQ) -> t Name -> DecsQ
-instances f = fmap toList . sequence . fmap f
 
 
 -- | Make an `XMap` instance for a non-parameterized type
@@ -95,15 +96,16 @@ xMapFunctor x f = xMap x (f ~> "s", f ~> "t", "a", "b")
 --           Data.X.Map.ymap = Data.X.Map.ymapFunctor
 -- @
 --
-functorInstance :: XMaps -> Name -> DecQ
+functorInstance :: XMaps -> TypeQ -> DecQ
 functorInstance x n = do
-  isFunctor <- isInstance ''Functor [ConT n]
+  n' <- n
+  isFunctor <- isInstance ''Functor [n']
   unless isFunctor . fail $ "Data.X.Map.functorInstance must be supplied with the name of a Functor"
   unsafeFunctorInstance x n
 
 -- | `functorInstance` without checking that the type has a `Functor` instance.
-unsafeFunctorInstance :: XMaps -> Name -> DecQ
-unsafeFunctorInstance x n = instanceD (cxt [xMap_ x]) (xMapFunctor x (conT n)) [functorXmap x, functorYmap x]
+unsafeFunctorInstance :: XMaps -> TypeQ -> DecQ
+unsafeFunctorInstance x n = instanceD (cxt [xMap_ x]) (xMapFunctor x n) [functorXmap x, functorYmap x]
 
 -- | @`xmap` = `xmapFunctor`@
 functorXmap :: XMaps -> DecQ

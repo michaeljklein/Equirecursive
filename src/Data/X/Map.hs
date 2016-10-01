@@ -61,7 +61,7 @@ import System.Posix.Types
 import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
-
+import Language.Haskell.TH (conT)
 
 -- type Setter s t a b = forall f. Settable f => (a -> f b) -> s -> f t
 
@@ -263,73 +263,27 @@ $(baseInstances'
    , ''Meta
    ])
 
--- $(functorInstances'
---   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
---   [  ''Bool
---    , ''Char
-
-
-
-instance XMap s t a b => XMap [s] [t] a b where
-  xmap :: Setter [s] [t] a b
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (IO s) (IO t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Maybe s) (Maybe t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (ReadP s) (ReadP t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (ReadPrec s) (ReadPrec t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Last s) (Last t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (First s) (First t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (STM s) (STM t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Handler s) (Handler t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (ZipList s) (ZipList t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Identity s) (Identity t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (ArgDescr s) (ArgDescr t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (OptDescr s) (OptDescr t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (ArgOrder s) (ArgOrder t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Proxy s) (Proxy t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
+$(functorInstances'
+  (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
+  [ conT ''[]
+  , conT ''IO
+  , conT ''Maybe
+  , conT ''ReadP
+  , conT ''ReadPrec
+  , conT ''Last
+  , conT ''First
+  , conT ''STM
+  , conT ''Handler
+  , conT ''ZipList
+  , conT ''Identity
+  , conT ''ArgDescr
+  , conT ''OptDescr
+  , conT ''ArgOrder
+  , conT ''Proxy
+  , conT ''V1
+  , conT ''U1
+  , conT ''Par1
+  ])
 
 instance XMap s t a b => XMap (ST st s) (ST st t) a b where
   xmap = xmapFunctor
@@ -340,18 +294,6 @@ instance (Arrow ar, XMap s t a b) => XMap (ArrowMonad ar s) (ArrowMonad ar t) a 
   ymap = ymapFunctor
 
 instance (Monad m, XMap s t a b) => XMap (WrappedMonad m s) (WrappedMonad m t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (V1 s) (V1 t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (U1 s) (U1 t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance XMap s t a b => XMap (Par1 s) (Par1 t) a b where
   xmap = xmapFunctor
   ymap = ymapFunctor
 
