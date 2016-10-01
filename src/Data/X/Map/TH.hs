@@ -12,7 +12,8 @@ import Data.String
 import Control.Monad
 import Data.Bifunctor (Bifunctor())
 import Data.Foldable (toList)
-
+import Data.X
+import Data.Rec
 
 instance IsString Name where
   fromString = mkName
@@ -37,8 +38,13 @@ functorInstances' :: XMaps -> [TypeQ] -> DecsQ
 functorInstances' x = instances (functorInstance x)
 
 -- | Convenience function
-bifunctorInstances' :: XMaps -> [Name] -> DecsQ
+constrainedFunctorInstances' :: XMaps -> [(TypeQ, TypeQ)] -> DecsQ
+constrainedFunctorInstances' x = instances (constrainedFunctorInstance x)
+
+-- | Convenience function
+bifunctorInstances' :: XMaps -> [TypeQ] -> DecsQ
 bifunctorInstances' x = instances (bifunctorInstance x)
+
 
 
 -- | Infix `appT`
@@ -61,6 +67,9 @@ xMapN x n = xMap x ( varT . mkName . ('s':) . show $ n
                    , "b")
 
 
+
+
+
 -- | Make an `XMap` instance for a non-parameterized type
 --
 -- @
@@ -71,7 +80,7 @@ xMapN x n = xMap x ( varT . mkName . ('s':) . show $ n
 -- @
 --
 baseInstance :: XMaps -> Name -> DecQ
-baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, "a", "b")) [baseXmap x, baseYmap x]
+baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, conT ''XX ~> "a", conT ''Rec ~> "b")) [baseXmap x, baseYmap x]
 
 -- | @`xmap` _ = `pure`@
 baseXmap :: XMaps -> DecQ
@@ -101,11 +110,11 @@ functorInstance x n = do
   n' <- n
   isFunctor <- isInstance ''Functor [n']
   unless isFunctor . fail $ "Data.X.Map.functorInstance must be supplied with the name of a Functor"
-  unsafeFunctorInstance x n
+  unsafeFunctorInstance [] x n
 
 -- | `functorInstance` without checking that the type has a `Functor` instance.
-unsafeFunctorInstance :: XMaps -> TypeQ -> DecQ
-unsafeFunctorInstance x n = instanceD (cxt [xMap_ x]) (xMapFunctor x n) [functorXmap x, functorYmap x]
+unsafeFunctorInstance :: [TypeQ] -> XMaps -> TypeQ -> DecQ
+unsafeFunctorInstance cs x n = instanceD (cxt $ cs ++ [xMap_ x]) (xMapFunctor x n) [functorXmap x, functorYmap x]
 
 -- | @`xmap` = `xmapFunctor`@
 functorXmap :: XMaps -> DecQ
@@ -115,12 +124,21 @@ functorXmap x = funD (xmp x) [clause [] (normalB . varE . xmpFunctor $ x) []]
 functorYmap :: XMaps -> DecQ
 functorYmap x = funD (ymp x) [clause [] (normalB . varE . ympFunctor $ x) []]
 
+-- | `functorInstance`, but additional constraints can be specified.
+constrainedFunctorInstance :: XMaps -> (TypeQ, TypeQ) -> DecQ
+constrainedFunctorInstance x (c, n) = do
+  n' <- n
+  isFunctor <- isInstance ''Functor [n']
+  unless isFunctor . fail $ "Data.X.Map.constrainedFunctorInstance must be supplied with the name of a Functor"
+  unsafeFunctorInstance [c] x n
 
 
 -- | @\p -> `XMap` (p s0 s1) (p t0 t1) a b@
 xMapBifunctor :: XMaps -> TypeQ -> TypeQ
 xMapBifunctor x f = xMap x (f ~> "s0" ~> "s1", f ~> "t0" ~> "t1", "a", "b")
 
+-- | Make an `XMap` instance for a dual-parameter `Bifunctor` type:
+--
 -- @
 -- bifunctorInstance ''(,)
 -- instance (Data.X.Map.XMap s0 t0 a b,
@@ -129,15 +147,16 @@ xMapBifunctor x f = xMap x (f ~> "s0" ~> "s1", f ~> "t0" ~> "t1", "a", "b")
 --           Data.X.Map.ymap = Data.X.Map.ymapBifunctor
 -- @
 --
-bifunctorInstance :: XMaps -> Name -> DecQ
+bifunctorInstance :: XMaps -> TypeQ -> DecQ
 bifunctorInstance x n = do
-  isBifunctor <- isInstance ''Bifunctor [ConT n]
+  n' <- n
+  isBifunctor <- isInstance ''Bifunctor [n']
   unless isBifunctor . fail $ "Data.X.Map.bifunctorInstance must be supplied with the name of a Bifunctor"
-  unsafeBifunctorInstance x n
+  unsafeBifunctorInstance [] x n
 
 -- | `bifunctorInstance` without checking that the type has a `Bifunctor` instance.
-unsafeBifunctorInstance :: XMaps -> Name -> DecQ
-unsafeBifunctorInstance x n = instanceD (cxt [xMapN x 0, xMapN x 1]) (xMapBifunctor x (conT n)) [bifunctorXmap x, bifunctorYmap x]
+unsafeBifunctorInstance :: [TypeQ] -> XMaps -> TypeQ -> DecQ
+unsafeBifunctorInstance cs x n = instanceD (cxt $ cs ++ [xMapN x 0, xMapN x 1]) (xMapBifunctor x n) [bifunctorXmap x, bifunctorYmap x]
 
 -- | @`xmap` = `xmapBifunctor`@
 bifunctorXmap :: XMaps -> DecQ
@@ -147,10 +166,12 @@ bifunctorXmap x = funD (xmp x) [clause [] (normalB . varE . xmpBifunctor $ x) []
 bifunctorYmap :: XMaps -> DecQ
 bifunctorYmap x = funD (ymp x) [clause [] (normalB . varE . ympBifunctor $ x) []]
 
-
-
-
-
-
+-- | `bifunctorInstance`, but specifying additional constraints is possible.
+constrainedBifunctorInstance :: XMaps -> (TypeQ, TypeQ) -> DecQ
+constrainedBifunctorInstance x (c, n) = do
+  n' <- n
+  isBifunctor <- isInstance ''Bifunctor [n']
+  unless isBifunctor . fail $ "Data.X.Map.constainedBifunctorInstance must be supplied with the name of a Bifunctor"
+  unsafeBifunctorInstance [c] x n
 
 

@@ -3,13 +3,15 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 {-# LANGUAGE UndecidableInstances #-}
+
 
 module Data.X.Map where
 
@@ -66,13 +68,26 @@ import Text.Read.Lex (Lexeme, Number)
 
 -- type Setter s t a b = forall f. Settable f => (a -> f b) -> s -> f t
 
--- | Convenience alias
-type XX k = X (X :: k -> *)
 
 -- | Map over a data structure and expand an `XX` into some `Rec`.
 -- Alternatively, compress some `Rec` into some `XX`.
--- class XMap s t a b | s -> a, t -> b, s b -> t, t a -> s where
--- class XMap s t a b | s b -> t, t a -> s where
+--
+-- Compare the functional dependencies to what we'd have if all
+-- subexpressions were guaranteed to contain an `XX`:
+-- @
+-- class `XMap` s t a b | s -> a, t -> b, s b -> t, t a -> s where
+-- @
+-- However, these additonal constraints fail for cases like the following:
+-- @
+-- `Either` `Int` `XX`
+-- @
+-- The classes recurse over `Either` and we have two cases: one with @Int@
+-- at the bottom and one trivial case. Since `xmap` should not modify the
+-- `Int`, the `Int` instance needs to be of the form:
+-- @
+-- instance XMap `Int` `Int` a b
+-- @
+-- However, `Int` along with @a, b@ does not determine @b, a@, respectively.
 class XMap s t a b | s b -> t, t a -> s where
   -- | `xmap` is the general setter, where @a@ must be `XX`
   xmap :: Setter s t a b
@@ -149,6 +164,10 @@ prodMap f g (x :*: y) = f x :*: g y
 -- | Map over the product type from "Data.Functor.Product"
 pairMap :: (f a -> f b) -> (g a -> g b) -> Product f g a -> Product f g b
 pairMap f g (Pair x y) = Pair (f x) (g y)
+
+-- instance XMap Int Int (XX k) (Rec t) where
+--   xmap = undefined
+--   ymap = undefined
 
 
 $(baseInstances'
@@ -293,36 +312,30 @@ $(functorInstances'
   , conT ''URec ~> (conT ''Ptr ~> conT ''())
   ])
 
+$(constrainedFunctorInstances'
+  (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
+  [ (conT ''Arrow   ~> varT "ar", conT ''ArrowMonad   ~> varT "ar"                        )
+  , (conT ''Monad   ~> varT "m" , conT ''WrappedMonad ~> varT "m"                         )
+  , (conT ''Functor ~> varT "f" , conT ''Rec1         ~> varT "f"                         )
+  , (conT ''Functor ~> varT "f" , conT ''M1           ~> varT "a"  ~> varT "c" ~> varT "f")
+  ])
+
 $(bifunctorInstances'
   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
-  [ ''(,)
-  , ''Either
-  , ''Const
-  , ''Constant
+  [ conT ''(,)
+  , conT ''Either
+  , conT ''Const
+  , conT ''Constant
   ])
 
 
-instance (Arrow ar, XMap s t a b) => XMap (ArrowMonad ar s) (ArrowMonad ar t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance (Monad m, XMap s t a b) => XMap (WrappedMonad m s) (WrappedMonad m t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance (Functor f, XMap s t a b) => XMap (Rec1 f s) (Rec1 f t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
-instance (Functor f, XMap s t a b) => XMap (M1 i c f s) (M1 i c f t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
-
+-- | This one is special, so not worth adding TH for it
 instance XMap s t a b => XMap (Down s) (Down t) a b where
   xmap f (Down x) = pure . Down . untainted . xmap f $ x
   ymap f (Down x) = pure . Down . untainted . ymap f $ x
 
 
+-- | TH for these would be a pain, but I think I might attempt it
 instance (Functor f, XMap (g s) (g t) a b) => XMap ((f :.: g) s) ((f :.: g) t) a b where
   xmap = xmapWithFunctor Comp1 unComp1
   ymap = ymapWithFunctor Comp1 unComp1
@@ -340,7 +353,7 @@ instance (Functor f, XMap s t a b) => XMap (Alt f s) (Alt f t) a b where
   ymap = ymapWithFunctor Alt getAlt
 
 
-
+-- | TH for these is pretty straightforward
 instance (XMap (f s) (f t) a b, XMap (g s) (g t) a b) => XMap ((f :+: g) s) ((f :+: g) t) a b where
   xmap = xmapWithDualMap sumMap
   ymap = ymapWithDualMap sumMap
@@ -354,6 +367,7 @@ instance (XMap (f s) (f t) a b, XMap (g s) (g t) a b) => XMap (Product f g s) (P
   ymap = ymapWithDualMap pairMap
 
 
+-- | TH for these is also pretty straightforward
 instance (XMap s0 t0 a b, XMap s1 t1 a b) => XMap (s0 -> s1) (t0 -> t1) a b where
   xmap = xmapArrow
   ymap = ymapArrow

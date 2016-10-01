@@ -3,6 +3,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeInType #-}
 
 module Data.X where
 
@@ -17,12 +18,18 @@ import Control.Applicative (liftA2)
 import Foreign.Ptr (castPtr)
 import Data.Bifunctor (bimap)
 import Data.Function (fix)
+import Data.Kind
+
 
 -- | `X` is a semi-magic type. As an inhabited type, it may be safely
 -- coerced to and from using `pure`/`return` and `extract`.
 -- As an uninhabited type, it is used in type families
 -- and is effectively a unit type with phantom argument.
 newtype X (a :: k) = X { getX :: Any }
+
+
+-- | Convenience alias
+type XX k = X (X :: k -> *)
 
 -- | An empty value
 xX :: X (a :: k -> *)
