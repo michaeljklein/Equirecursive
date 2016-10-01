@@ -1,0 +1,53 @@
+name:                reflexive
+version:             0.1.0.0
+synopsis:            Limited infinite types
+description:         Please see README.md
+homepage:            https://github.com/michaeljklein/basic#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Michael Klein
+maintainer:          lambdamichael@gmail.com
+copyright:           2016 Michael Klein
+category:            Web
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >= 1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Data.X
+                     , Data.X.Map
+                     , Data.X.Map.TH
+                     , Data.X.Map.Internal
+                     , Data.Rec
+
+  ghc-options:         -Wall
+  build-depends:       base >= 4.9.0.0
+                     , comonad >= 4.3
+                     , contravariant >= 1.4
+                     , data-default >= 0.7.1.1
+                     , lens >= 4.14
+                     , transformers >= 0.5.2.0
+                     , distributive >= 0.5.0.2
+                     , template-haskell >= 2.11.0.0
+                     , ghc-prim
+  default-language:    Haskell2010
+
+executable basic-exe
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+  default-language:    Haskell2010
+
+test-suite basic-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/michaeljklein/basic
