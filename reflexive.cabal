@@ -18,9 +18,8 @@ library
   exposed-modules:     Data.X
                      , Data.X.Map
                      , Data.X.Map.TH
-                     , Data.X.Map.Internal
                      , Data.Rec
-
+                     , Data.Rec.Recurse
   ghc-options:         -Wall
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3

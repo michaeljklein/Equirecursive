@@ -165,10 +165,6 @@ prodMap f g (x :*: y) = f x :*: g y
 pairMap :: (f a -> f b) -> (g a -> g b) -> Product f g a -> Product f g b
 pairMap f g (Pair x y) = Pair (f x) (g y)
 
--- instance XMap Int Int (XX k) (Rec t) where
---   xmap = undefined
---   ymap = undefined
-
 
 $(baseInstances'
   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
