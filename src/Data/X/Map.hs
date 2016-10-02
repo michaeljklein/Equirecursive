@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -13,7 +14,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 
-module Data.X.Map (XMap(..)) where
+module Data.X.Map where
 
 import Control.Applicative (ZipList, WrappedMonad, Const)
 import Control.Arrow (Arrow, ArrowMonad, Kleisli, arr)
@@ -52,7 +53,7 @@ import GHC.IO.Device (IODeviceType, SeekMode)
 import GHC.IO.Encoding.Types (CodingProgress)
 import GHC.IO.Handle (Handle, BufferMode, NewlineMode, HandlePosn)
 import GHC.TypeLits (SomeNat, SomeSymbol)
-import Language.Haskell.TH (conT, varT)
+import Language.Haskell.TH (conT, varT, promotedT)
 import Numeric.Natural
 import Prelude hiding (id, (.))
 import System.Console.GetOpt (ArgOrder, OptDescr, ArgDescr)
@@ -64,7 +65,7 @@ import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
 
-import Data.X.Map.TH (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances')
+import Data.X.Map.TH (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances', (~>))
 import Data.Recurse (Locking(..), Recurse(..))
 
 
@@ -96,9 +97,15 @@ class XMap s t a b | s b -> t, t a -> s where
 
 -- Ok. If I never recurse on Rec, and always replace XX -> Rec _, this will always be reversable, which will also allow for generalized pulls.
 -- | Base instance, this is what's replaced
-instance XMap (XX k) (Rec t) (XX k) (Rec t) where
+-- instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t) where
+instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t) where
   xmap = id
-  ymap _ (Rec x) = pure $ return x >- xX
+  ymap _ (RecurseLocked x) = pure $ return x >- xX
+
+
+instance XMap s t a b => XMap (Recurse 'Unlocked s) (Recurse 'Unlocked t) a b where
+  xmap = xmapFunctor
+  ymap = ymapFunctor
 
 
 -- | Extend `xmap` to an arbitrary `Functor`
@@ -149,6 +156,7 @@ xmapArrow f ar = pure $ arr (untainted . xmap f) . ar . arr (untainted . ymap f)
 ymapArrow :: (Arrow ar, XMap s0 t0 a b, XMap s1 t1 a b) => Setter (ar t0 t1) (ar s0 s1) a b
 ymapArrow f ar = pure $ arr (untainted . ymap f) . ar . arr (untainted . xmap f)
 
+ymapArrow2 f g ar = pure $ arr (untainted . ymap f) . ar . arr (untainted . xmap g)
 
 $(baseInstances'
   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)

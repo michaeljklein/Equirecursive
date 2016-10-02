@@ -13,6 +13,7 @@ import Control.Monad
 import Data.Bifunctor (Bifunctor())
 import Data.Foldable (toList)
 import Data.Recurse (Locking(..), Recurse(..))
+import Data.X (XX)
 
 instance IsString Name where
   fromString = mkName
@@ -79,7 +80,7 @@ xMapN x n = xMap x ( varT . mkName . ('s':) . show $ n
 -- @
 --
 baseInstance :: XMaps -> Name -> DecQ
-baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, conT ''XX ~> "a", conT ''Rec ~> "b")) [baseXmap x, baseYmap x]
+baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, appT (conT ''XX) (varT (mkName "k")), appT (appT (conT ''Recurse) (promotedT 'Locked)) (varT (mkName "t")))) [baseXmap x, baseYmap x]
 
 -- | @`xmap` _ = `pure`@
 baseXmap :: XMaps -> DecQ

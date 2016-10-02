@@ -3,24 +3,64 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeInType #-}
+{-# LANGUAGE RankNTypes #-}
+
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- | Rename to Data.Recurse.Recursing
 module Data.Recurse.Recursing where
 
-import Data.Rec
-import Data.X
-import Data.X.Map
-
+import Data.Recurse
+-- import Data.X
+-- import Data.X.Map
+-- import Control.Lens.Setter
+import Data.Kind
 
 
 class Recursing (a :: *) where
   type RecursingBuilder a t :: *
-  rec :: (forall t. RecursingBuilder a t) -> Recurse Locked a
+  rec :: (forall t. RecursingBuilder a t) -> Recurse 'Locked a
+
+
+-- Got locked and unlocked backwards? Unlocked should be the one that's replaced while Locked should be the one that's mapped through.
+-- Unlocked has the functor instance while Locked has the functor-like instance.
+--
+-- The functor-like instance allows one to recurse on the locked one?
+-- Recurse 'Locked (XX k, Int) -> (Recurse 'Locked (XX k, Int), Int)
+
+-- let tr4 = undefined :: (Recurse 'Locked t, Int) -> (Recurse 'Locked (Recurse 'Locked t, Int), Int)
+
+-- RecurseLocked . fix . runIdentity $ (ymapArrow2 (undefined :: XX k -> Identity (Recurse 'Locked t)) (undefined :: XX k -> Identity(Recurse 'Locked t))) tr4
+--   :: Recurse 'Locked (XX k, Int)
+
+
+-- instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t)
+-- instance XMap (Recurse 'Unlocked s) (Recurse 'Unlocked t) a b
+
+-- This means we effectivey have an iso between (XX k) and (Recurse 'Locked t).
+-- The second means we can map into (Recurse 'Unlocked)
+
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- (RecurseLocked . fix . (ymap `over` (undefined :: XX k -> Rec t))) (undefined :: (Int, Rec t) -> (Int, Rec t))
+--   :: Recurse 'Locked (Int, XX k)
+-- (RecurseLocked . fix . (ymap `over` (undefined :: XX k -> Rec t)))
+--   :: XMap a t1 (X X) (Rec t) => (t1 -> t1) -> Recurse 'Locked a
+
+
+-- rec :
+-- RecurseLicked . fix . ymap `over` (undefined :: XX k -> Rec t)
+
+--   RecurseLocked   :: a -> Recurse 'Locked   a
+--   RecurseUnlocked :: a -> Recurse 'Unlocked a
+
 
 -- instance Recursing (Int, XX k) where
 --   type RecBuilder (Int, XX k) t = (Int, Rec t) -> (Int, Rec (Int, Rec t))
 --   rec r = let t = r t in Rec t
 
+-- return . fix . ymap `over` (undefined :: Rec a -> XX k)
 
 -- Here is the control flow for deriving the types:
 -- Rec (a, XX k) ->         Given in class
