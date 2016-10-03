@@ -4,6 +4,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
@@ -14,13 +16,55 @@ import Data.Recurse
 -- import Data.X
 -- import Data.X.Map
 -- import Control.Lens.Setter
+import Prelude hiding (id, (.))
 import Data.Kind
+import Data.X
+import Data.X.Map (XMap(..))
+import Unsafe.Coerce
+import Control.Category (Category(..))
+import Data.Function (fix)
+import Control.Lens.Setter ((%~))
+
+-- class Recursing (a :: *) where
+--   type RecursingBuilder a t :: *
+  -- rec :: (forall t. RecursingBuilder a t) -> Recurse 'Locked a
+
+-- | `unsafeCoerce` @`XX` k@ to @t@ and wrap with `RecurseLocked`
+lockXX :: XX k -> RecurseL t
+lockXX (X x) = RecurseLocked . unsafeCoerce $ x
 
 
-class Recursing (a :: *) where
-  type RecursingBuilder a t :: *
-  rec :: (forall t. RecursingBuilder a t) -> Recurse 'Locked a
+-- | `xmap`-like
+(~%~) :: forall a a1 a2 b b1 b2 b3 c.
+         ( XMap b2 a a2 b3
+         , XMap b  c a1 b1 ) =>
+         (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
+(f ~%~ g) ar = (xmap %~ f) . ar . (ymap %~ g)
 
+-- | `ymap`-like
+(%~%) :: forall a a1 a2 b b1 b2 b3 c.
+         ( XMap a b2 a2 b3
+         , XMap c b  a1 b1 ) =>
+         (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
+(f %~% g) ar = (ymap %~ f) . ar . (xmap %~ g)
+
+
+
+
+-- class (XMap b4 b2 (RecurseU a1) (RecurseL a1), XMap b3 b1 (RecurseU a) (RecurseL a), XMap b b2 (XX k1) (RecurseL t1), XMap b b1 (XX k) (RecurseL t)) => Recursing a b c where
+--   rec :: (b4 -> b3) -> RecurseL b
+
+
+rec f = RecurseLocked . fix $ (lockXX %~% lockXX) . (lock ~%~ lock) $ f
+
+tr4 :: (Recurse 'Locked t, Int) -> (Recurse 'Locked (Recurse 'Locked t, Int), Int)
+tr4 = undefined
+
+-- tt = rec tr4
+
+-- xmap %~ lock :: XMap s t (RecurseU a) (Recurse 'Locked a) => s -> t
+-- xmap %~ lockXX :: XMap s t (XX k) (Recurse 'Locked t1) => s -> t
+-- ymap %~ lockXX :: XMap t t1 (XX k) (Recurse 'Locked t2) => t1 -> t
 
 -- Got locked and unlocked backwards? Unlocked should be the one that's replaced while Locked should be the one that's mapped through.
 -- Unlocked has the functor instance while Locked has the functor-like instance.

@@ -80,7 +80,8 @@ xMapN x n = xMap x ( varT . mkName . ('s':) . show $ n
 -- @
 --
 baseInstance :: XMaps -> Name -> DecQ
-baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, appT (conT ''XX) (varT (mkName "k")), appT (appT (conT ''Recurse) (promotedT 'Locked)) (varT (mkName "t")))) [baseXmap x, baseYmap x]
+-- baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, appT (conT ''XX) (varT (mkName "k")), appT (appT (conT ''Recurse) (promotedT 'Locked)) (varT (mkName "t")))) [baseXmap x, baseYmap x]
+baseInstance x n = instanceD (cxt []) (xMap x (conT n, conT n, appT (conT ''XX) (varT (mkName "k")), appT (appT (conT ''Recurse) (varT $ mkName "l")) (varT (mkName "t")))) [baseXmap x, baseYmap x]
 
 -- | @`xmap` _ = `pure`@
 baseXmap :: XMaps -> DecQ

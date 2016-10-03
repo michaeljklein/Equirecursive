@@ -10,6 +10,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -66,8 +68,9 @@ import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
 
 import Data.X.Map.TH (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances', (~>))
-import Data.Recurse (Locking(..), Recurse(..))
-
+import Data.Recurse (Locking(..), Recurse(..), lock, unlock, RecurseU, RecurseL)
+import Data.Type.Equality
+import Unsafe.Coerce
 
 -- | Map over a data structure and expand an `XX` into some `Rec`.
 -- Alternatively, compress some `Rec` into some `XX`.
@@ -94,6 +97,145 @@ class XMap s t a b | s b -> t, t a -> s where
   -- | `ymap` is the complement to `xmap`, reversing its effects.
   ymap :: Setter t s a b
 
+-- s b -> t
+-- t a -> s
+-- s -> a, unless atom: s a -> atom
+-- t -> b, unless atom: t b -> atom
+--                atom => s ~ t
+
+-- --------------------- atom ~ (Int, Bool, Etc)
+-- s b -> t
+-- t a -> s
+-- s atom -> a
+-- t atom -> b
+-- s a b -> atom
+-- t a b -> atom
+
+-- These are the minimum determining sets:
+--     s | t | a | b | at
+--   [ 1 | 1 | 0 | 0 | 1 ]
+--   [ 1 | 0 | 1 | 1 | 0 ]
+--   [ 1 | 0 | 0 | 1 | 1 ]
+--   [ 0 | 1 | 1 | 1 | 0 ]
+--   [ 0 | 1 | 1 | 0 | 1 ]
+
+
+-- class (Contains a s ~ True, Contains b t ~ 'True) => XMapContains s t a b | s -> a, t -> b, s b -> t, t a -> s where
+--   xmapCont :: Setter s t a b
+--   ymapCont :: Setter t s a b
+
+class XMap2 (s :: *) (t :: *) k (l :: Locking) (b :: *) | s -> k, t -> l, t -> b, s l b -> t, t k -> s where
+  xmap2 :: Setter s t (XX k) (Recurse l b)
+  ymap2 :: Setter t s (XX k) (Recurse l b)
+
+instance XMap2 (XX k) (Recurse l b) k l b where
+  xmap2 = undefined
+  ymap2 = undefined
+
+class XMapContains s t k lk b (l :: Bool) (r :: Bool) | s -> k, t -> lk, t -> b, s lk b -> t, t k -> s where -- | s -> k, t -> lk, t -> b, s -> l, t -> r where
+  bixmap :: Setter s t (XX k) (Recurse lk b)
+  biymap :: Setter t s (XX k) (Recurse lk b)
+
+
+class XMapN s where
+  type XMapF s (a :: k0) (l :: Locking) b :: *
+  type XMapC s (a :: k0) (l :: Locking) b :: Constraint
+  type YMapF s (a :: k0) (l :: Locking) b :: *
+  type YMapC s (a :: k0) (l :: Locking) b :: Constraint
+  xmapc :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter s (XMapF s a l b) (X       a  ) (Recurse l b)
+  ymapc :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
+
+-- -- | Need to decide whether the @a ~ a0@ constraint is desirable, or to shove through the inequality.
+-- instance (a ~ a0) => XMapCX (a :: k -> *) (a0 :: k -> *) (l :: Locking) (b :: *) where
+--   type XMapFX a (a0 :: k -> *) l b = Recurse l b
+--   xmapcX = (id :: (X a -> f (Recurse l b)) -> X a -> f (Recurse l b))
+
+-- instance XMapCX (a :: k -> *) (a0 :: *) (l :: Locking) (b :: *) where
+--   type XMapFX a (a0 :: *) l b = X a
+--   xmapcX = (const pure :: Applicative f => (X a0 -> f (Recurse l b)) -> X a -> f (X a))
+
+
+type family (+?+) (a :: Constraint) (b :: Constraint) where
+  () +?+ b  = b
+  a  +?+ () = a
+  a  +?+ b  = (a, b)
+
+class XMapNX a a0 l b where
+  type XMapFX a a0 l b :: *
+  xmapnX :: Setter (X a) (XMapFX a a0 l b) (X a0) (Recurse l b)
+
+instance (a ~ a0) => XMapNX a (a0 :: k -> *) l b where
+  type XMapFX a a0 l b = Recurse l b
+  xmapnX = id
+
+instance XMapNX a (a0 :: *) l b where
+  type XMapFX a a0 l b = X a
+  xmapnX = const pure
+
+instance XMapN (X (a :: k -> *)) where
+  type XMapF (X a) a0 l b = XMapFX a a0 l b
+  type XMapC (X a) a0 l b = XMapNX a a0 l b
+  type YMapF (X a) a0 l b = X a
+  type YMapC (X a) a0 l b = ()
+  xmapc = xmapnX
+  ymapc = const pure
+
+instance XMapN (Recurse l b) where
+  type XMapF (Recurse l b) a l0 b0 = Recurse l b
+  type XMapC (Recurse l b) a l0 b0 = ()
+  type YMapF (Recurse l b) a l0 b0 = () -- ((l0 == l) :&& (b0 == b)) :? (X a, Recurse l b)
+  type YMapC (Recurse l b) a l0 b0 = ()
+  xmapc = const pure
+  ymapc = undefined
+
+instance XMapN Int where
+  type XMapF Int a l b = Int
+  type XMapC Int a l b = ()
+  type YMapF Int a l b = Int
+  type YMapC Int a l b = ()
+  xmapc = undefined
+  ymapc = undefined
+
+instance (XMapN s0, XMapN s1) => XMapN (s0, s1) where
+  type XMapF (s0, s1) a l b = (XMapF s0 a l b, XMapF s1 a l b)
+  type XMapC (s0, s1) a l b = XMapC s0 a l b +?+ XMapC s1 a l b
+  type YMapF (s0, s1) a l b = (YMapF s0 a l b, YMapF s1 a l b)
+  type YMapC (s0, s1) a l b = YMapC s0 a l b +?+ YMapC s1 a l b
+  xmapc = undefined
+  ymapc = undefined
+
+
+-- f :: a -> b
+-- f :: (RecurseL Void, Int) -> (RecurseU (RecurseL Void, Int), Int)
+-- (. ymapc (XX -> RecurseU a)       f :: (RecurseL Void, Int) -> (XX, Int)
+-- (  ymapc (XX -> RecurseL Void) .) _ :: (XX, Int) -> (XX, Int)
+
+
+-- f :: (RecurseU t, Int) -> (RecurseU (RecurseU t, Int), Int)
+-- (. ymapc (XX -> (RecurseU t, Int))) f :: (RecurseU t, Int) -> (RecurseU XX, Int)
+-- (. ymapc (XX -> RecurseU XX)) _ :: (RecurseU t, Int) -> (XX, Int)
+-- (ymapc (XX -> RecurseU t) .) _ :: (XX, Int) -> (XX, Int)
+
+-- type family XMapF s (l :: Locking) b :: *
+-- type instance XMapF (XX k) l b = Recurse l b
+-- type instance XMapF (Recurse l0 b0) l b = Recurse l0 b0
+-- type instance XMapF Int l b = Int
+-- type instance XMapF (s0, s1) l b = (XMapF s0 l b, XMapF s1 l b)
+
+-- type family YMapF s (l :: Locking) b :: *
+-- type instance YMapF (XX k) l b =
+
+-- type family Contains (a :: *) (b :: *) :: Bool
+-- type instance Contains a Int = 'False
+-- type instance Contains (XX k0) (XX k1) = 'True
+-- type instance Contains a (b, c) = Contains a b :|: Contains a c
+
+type family (a :: Bool) :|: (b :: Bool) where
+  'True  :|: 'True   = 'True
+  'True  :|: 'False  = 'True
+  'False :|: 'True   = 'True
+  'False :|: 'False  = 'False
+
 
 -- Ok. If I never recurse on Rec, and always replace XX -> Rec _, this will always be reversable, which will also allow for generalized pulls.
 -- | Base instance, this is what's replaced
@@ -103,9 +245,22 @@ instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t) where
   ymap _ (RecurseLocked x) = pure $ return x >- xX
 
 
-instance XMap s t a b => XMap (Recurse 'Unlocked s) (Recurse 'Unlocked t) a b where
-  xmap = xmapFunctor
-  ymap = ymapFunctor
+-- | This gives us an iso between the two. This means that we can lock a type and unlock it later.
+--
+-- However! It also means that this is extremely dangerous to use. `xmap` and `ymap` should not be exported,
+-- but instead locked in with a few key argument types.
+--
+-- ALSO, in this form, `xmap` locks and `ymap` unlocks. This is parallel to the base instance.
+-- As long as there's no way to manipulate `Locked` or `XX` from the outside, exporting `xmap`
+-- should be completely safe?
+instance XMap (Recurse 'Unlocked t) (Recurse 'Locked t) (Recurse 'Unlocked a) (Recurse 'Locked a) where
+  xmap _ = pure . lock
+  ymap _ = pure . unlock
+
+
+-- instance XMap s t a b => XMap (Recurse 'Unlocked s) (Recurse 'Unlocked t) a b where
+--   xmap = xmapFunctor
+--   ymap = ymapFunctor
 
 
 -- | Extend `xmap` to an arbitrary `Functor`
@@ -156,7 +311,9 @@ xmapArrow f ar = pure $ arr (untainted . xmap f) . ar . arr (untainted . ymap f)
 ymapArrow :: (Arrow ar, XMap s0 t0 a b, XMap s1 t1 a b) => Setter (ar t0 t1) (ar s0 s1) a b
 ymapArrow f ar = pure $ arr (untainted . ymap f) . ar . arr (untainted . xmap f)
 
-ymapArrow2 f g ar = pure $ arr (untainted . ymap f) . ar . arr (untainted . xmap g)
+instance XMap Int Int a b where
+  xmap _ = pure
+  ymap _ = pure
 
 $(baseInstances'
   (XMaps ''XMap 'xmap 'ymap 'xmapFunctor 'ymapFunctor 'xmapBifunctor 'ymapBifunctor)
@@ -164,7 +321,7 @@ $(baseInstances'
    , ''Char
    , ''Double
    , ''Float
-   , ''Int
+   -- , ''Int
    , ''Int8
    , ''Int16
    , ''Int32
