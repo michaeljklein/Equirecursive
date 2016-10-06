@@ -18,12 +18,13 @@
 
 module Data.X.Map where
 
-import Control.Applicative (ZipList, WrappedMonad, Const)
+import Control.Applicative (ZipList, WrappedMonad, Const, liftA2)
 import Control.Arrow (Arrow, ArrowMonad, Kleisli, arr)
 import Control.Category (Category(..))
 import Control.Exception (Handler, AsyncException, ArrayException, MaskingState, IOException, ErrorCall, ArithException)
 import Control.Lens.Internal.Setter (Settable(..))
 import Control.Lens.Setter
+import Control.Monad (join)
 import Control.Monad.ST (ST)
 import Data.Bifunctor (Bifunctor(bimap))
 import Data.Char (GeneralCategory)
@@ -47,7 +48,7 @@ import Foreign.C.Error (Errno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, WordPtr, IntPtr)
 import GHC.Conc (STM, ThreadId, ThreadStatus, BlockReason)
-import GHC.Exts (SpecConstrAnnotation)
+import GHC.Exts (Coercible, SpecConstrAnnotation)
 import GHC.Fingerprint.Type
 import GHC.Generics
 import GHC.IO.Buffer (BufferState)
@@ -66,6 +67,9 @@ import System.Posix.Types
 import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read.Lex (Lexeme, Number)
+import Data.Profunctor
+import Control.Lens.Iso
+import Control.Lens
 
 import Data.X.Map.TH (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances', (~>))
 import Data.Recurse (Locking(..), Recurse(..), lock, unlock, RecurseU, RecurseL)
@@ -124,17 +128,22 @@ class XMap s t a b | s b -> t, t a -> s where
 --   xmapCont :: Setter s t a b
 --   ymapCont :: Setter t s a b
 
-class XMap2 (s :: *) (t :: *) k (l :: Locking) (b :: *) | s -> k, t -> l, t -> b, s l b -> t, t k -> s where
-  xmap2 :: Setter s t (XX k) (Recurse l b)
-  ymap2 :: Setter t s (XX k) (Recurse l b)
+-- class XMap2 (s :: *) (t :: *) k (l :: Locking) (b :: *) | s -> k, t -> l, t -> b, s l b -> t, t k -> s where
+--   xmap2 :: Setter s t (XX k) (Recurse l b)
+--   ymap2 :: Setter t s (XX k) (Recurse l b)
 
-instance XMap2 (XX k) (Recurse l b) k l b where
-  xmap2 = undefined
-  ymap2 = undefined
+-- instance XMap2 (XX k) (Recurse l b) k l b where
+--   xmap2 = undefined
+--   ymap2 = undefined
 
-class XMapContains s t k lk b (l :: Bool) (r :: Bool) | s -> k, t -> lk, t -> b, s lk b -> t, t k -> s where -- | s -> k, t -> lk, t -> b, s -> l, t -> r where
-  bixmap :: Setter s t (XX k) (Recurse lk b)
-  biymap :: Setter t s (XX k) (Recurse lk b)
+-- class XMapContains s t k lk b (l :: Bool) (r :: Bool) | s -> k, t -> lk, t -> b, s lk b -> t, t k -> s where -- | s -> k, t -> lk, t -> b, s -> l, t -> r where
+--   bixmap :: Setter s t (XX k) (Recurse lk b)
+--   biymap :: Setter t s (XX k) (Recurse lk b)
+
+type family (+?+) (a :: Constraint) (b :: Constraint) where
+  () +?+ b  = b
+  a  +?+ () = a
+  a  +?+ b  = (a, b)
 
 
 class XMapN s where
@@ -142,31 +151,31 @@ class XMapN s where
   type XMapC s (a :: k0) (l :: Locking) b :: Constraint
   type YMapF s (a :: k0) (l :: Locking) b :: *
   type YMapC s (a :: k0) (l :: Locking) b :: Constraint
-  xmapc :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter s (XMapF s a l b) (X       a  ) (Recurse l b)
-  ymapc :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
+  xmapn :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter s (XMapF s a l b) (X       a  ) (Recurse l b)
+  ymapn :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
 
--- -- | Need to decide whether the @a ~ a0@ constraint is desirable, or to shove through the inequality.
--- instance (a ~ a0) => XMapCX (a :: k -> *) (a0 :: k -> *) (l :: Locking) (b :: *) where
---   type XMapFX a (a0 :: k -> *) l b = Recurse l b
---   xmapcX = (id :: (X a -> f (Recurse l b)) -> X a -> f (Recurse l b))
-
--- instance XMapCX (a :: k -> *) (a0 :: *) (l :: Locking) (b :: *) where
---   type XMapFX a (a0 :: *) l b = X a
---   xmapcX = (const pure :: Applicative f => (X a0 -> f (Recurse l b)) -> X a -> f (X a))
-
-
-type family (+?+) (a :: Constraint) (b :: Constraint) where
-  () +?+ b  = b
-  a  +?+ () = a
-  a  +?+ b  = (a, b)
+----------------------------------------------------------------------------------------------------------------------------------
 
 class XMapNX a a0 l b where
   type XMapFX a a0 l b :: *
   xmapnX :: Setter (X a) (XMapFX a a0 l b) (X a0) (Recurse l b)
 
-instance (a ~ a0) => XMapNX a (a0 :: k -> *) l b where
-  type XMapFX a a0 l b = Recurse l b
-  xmapnX = id
+class ((a == a0) ~ eq) => XMapNXEq (a :: k -> *) (a0 :: k -> *) l b (eq :: Bool) where
+  type XMapFXEq a a0 l b eq :: *
+  xmapnXEq :: Setter (X a) (XMapFX a a0 l b) (X a0) (Recurse l b)
+
+instance (a ~ a0) => XMapNXEq a a0 l b 'True where
+  type XMapFXEq a a0 l b 'True = Recurse l b
+  xmapnXEq = id
+
+instance ((a == a0) ~ 'False) => XMapNXEq a a0 l b 'False where
+  type XMapFXEq a a0 l b 'False = X a
+  xmapnXEq = const pure
+
+-- | Need to expand this into an eq class, i.e. actually check if (a == a0), like with YMapNRecurse
+instance ((a == a0) ~ eq, XMapNXEq a a0 l b eq) => XMapNX a (a0 :: k -> *) l b where
+  type XMapFX a a0 l b = XMapFXEq a a0 l b (a == a0)
+  xmapnX = xmapnXEq
 
 instance XMapNX a (a0 :: *) l b where
   type XMapFX a a0 l b = X a
@@ -177,33 +186,205 @@ instance XMapN (X (a :: k -> *)) where
   type XMapC (X a) a0 l b = XMapNX a a0 l b
   type YMapF (X a) a0 l b = X a
   type YMapC (X a) a0 l b = ()
-  xmapc = xmapnX
-  ymapc = const pure
+  xmapn = xmapnX
+  ymapn = const pure
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+class ((b == b0) ~ eq) => YMapNRecurse a l l0 b b0 eq where
+  type YMapFRecurse a l l0 b b0 eq :: *
+  ymapnRecurse :: Setter (Recurse l b) (YMapFRecurse a l l0 b b0 eq) (Recurse l0 b0) (X a)
+
+instance (b ~ b0) =>            YMapNRecurse a 'Locked 'Locked b b0 'True where
+  type                          YMapFRecurse a 'Locked 'Locked b b0 'True = X a
+  ymapnRecurse = id
+
+instance ((b == b0) ~ 'False) => YMapNRecurse a 'Locked 'Locked b b0 'False where
+  type                          YMapFRecurse a 'Locked 'Locked b b0 'False = Recurse 'Locked b
+  ymapnRecurse = const pure
+
+instance ((b == b0) ~ eq)     => YMapNRecurse a 'Locked 'Unlocked b b0 eq where
+  type                          YMapFRecurse a 'Locked 'Unlocked b b0 eq = Recurse 'Locked b
+  ymapnRecurse = const pure
+
+instance ((b == b0) ~ eq)     => YMapNRecurse a 'Unlocked 'Locked b b0 eq where
+  type                          YMapFRecurse a 'Unlocked 'Locked b b0 eq = Recurse 'Unlocked b
+  ymapnRecurse = const pure
+
+instance (b ~ b0) =>            YMapNRecurse a 'Unlocked 'Unlocked b b0 'True where
+  type                          YMapFRecurse a 'Unlocked 'Unlocked b b0 'True = X a
+  ymapnRecurse = id
+
+instance ((b == b0) ~ 'False) => YMapNRecurse a 'Unlocked 'Unlocked b b0 'False where
+  type                          YMapFRecurse a 'Unlocked 'Unlocked b b0 'False = Recurse 'Unlocked b
+  ymapnRecurse = const pure
 
 instance XMapN (Recurse l b) where
   type XMapF (Recurse l b) a l0 b0 = Recurse l b
   type XMapC (Recurse l b) a l0 b0 = ()
-  type YMapF (Recurse l b) a l0 b0 = () -- ((l0 == l) :&& (b0 == b)) :? (X a, Recurse l b)
-  type YMapC (Recurse l b) a l0 b0 = ()
-  xmapc = const pure
-  ymapc = undefined
+  type YMapF (Recurse l b) a l0 b0 = YMapFRecurse a l l0 b b0 (b == b0)
+  type YMapC (Recurse l b) a l0 b0 = YMapNRecurse a l l0 b b0 (b == b0)
+  xmapn = const pure
+  ymapn = ymapnRecurse
+
+----------------------------------------------------------------------------------------------------------------------------------
 
 instance XMapN Int where
   type XMapF Int a l b = Int
   type XMapC Int a l b = ()
   type YMapF Int a l b = Int
   type YMapC Int a l b = ()
-  xmapc = undefined
-  ymapc = undefined
+  xmapn = const pure
+  ymapn = const pure
 
-instance (XMapN s0, XMapN s1) => XMapN (s0, s1) where
-  type XMapF (s0, s1) a l b = (XMapF s0 a l b, XMapF s1 a l b)
-  type XMapC (s0, s1) a l b = XMapC s0 a l b +?+ XMapC s1 a l b
-  type YMapF (s0, s1) a l b = (YMapF s0 a l b, YMapF s1 a l b)
-  type YMapC (s0, s1) a l b = YMapC s0 a l b +?+ YMapC s1 a l b
-  xmapc = undefined
-  ymapc = undefined
+----------------------------------------------------------------------------------------------------------------------------------
 
+instance (XMapN s0, XMapN s1) => XMapN ((,) s0 s1) where
+  type XMapF ((,) s0 s1) a l b = (,) (XMapF s0 a l b)     (XMapF s1 a l b)
+  type XMapC ((,) s0 s1) a l b =     (XMapC s0 a l b   ,   XMapC s1 a l b)
+  type YMapF ((,) s0 s1) a l b = (,) (YMapF s0 a l b)     (YMapF s1 a l b)
+  type YMapC ((,) s0 s1) a l b =     (YMapC s0 a l b   ,   YMapC s1 a l b)
+  xmapn = biSetter biSet xmapn xmapn
+  ymapn = biSetter biSet ymapn ymapn
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+-- instance (Bifunctor p, XMapN s0, XMapN s1) => XMapN (p s0 s1) where
+--   type XMapF (p s0 s1) a l b = p (XMapF s0 a l b)     (XMapF s1 a l b)
+--   type XMapC (p s0 s1) a l b =    XMapC s0 a l b  +?+  XMapC s1 a l b
+--   type YMapF (p s0 s1) a l b = p (YMapF s0 a l b)     (YMapF s1 a l b)
+--   type YMapC (p s0 s1) a l b =    YMapC s0 a l b  +?+  YMapC s1 a l b
+--   xmapn f = bimap (xmapn f) (xmapn f)
+--   ymapn f = bimap (ymapn f) (ymapn f)
+
+-- ----------------------------------------------------------------------------------------------------------------------------------
+
+-- instance (ProFunctor p, XMapN s0, XMapN s1) => XMapN (p s0 s1) where
+--   type XMapF (p s0 s1) a l b = p (XMapF s0 a l b)     (XMapF s1 a l b)
+--   type YMapF (p s0 s1) a l b =    XMapC s0 a l b  +?+  XMapC s1 a l b
+--   type YMapF (p s0 s1) a l b = p (YMapF s0 a l b)     (YMapF s1 a l b)
+--   type YMapC (p s0 s1) a l b =    YMapC s0 a l b  +?+  YMapC s1 a l b
+--   xmapn f = dimap (ymapn f) (xmapn f)
+--   ymapn f = dimap (xmapn f) (ymapn f)
+
+-- ----------------------------------------------------------------------------------------------------------------------------------
+
+-- instance (Arrow ar, XMapN s0, XMapN s1) => XMapN (ar s0 s1) where
+--   type XMapF (ar s0 s1) a l b = ar (XMapF s0 a l b)     (XMapF s1 a l b)
+--   type XMapC (ar s0 s1) a l b =     XMapC s0 a l b  +?+  XMapC s1 a l b
+--   type YMapF (ar s0 s1) a l b = ar (YMapF s0 a l b)     (YMapF s1 a l b)
+--   type YMapC (ar s0 s1) a l b =     YMapC s0 a l b  +?+  YMapC s1 a l b
+--   xmapn f g = (ymapn f) . g . (xmapn f)
+--   ymapn f g = (xmapn f) . g . (ymapn f)
+
+-- ----------------------------------------------------------------------------------------------------------------------------------
+
+-- instance (Functor f, XMapN s) => XMapN (f s) where
+--   type XMapF (f s) a l b = f (XMapF s a l b)
+--   type XMapC (f s) a l b =    XMapC s a l b
+--   type YMapF (f s) a l b = f (YMapF s a l b)
+--   type YMapC (f s) a l b =    YMapC s a l b
+--   xmapn f = fmap (xmapn f)
+--   ymapn f = fmap (ymapn f)
+
+----------------------------------------------------------------------------------------------------------------------------------
+
+-- | Tested
+-- instance XMapN s => XMapN (Maybe s) where
+--   type XMapF (Maybe s) a l b = Maybe (XMapF s a l b)
+--   type XMapC (Maybe s) a l b =        XMapC s a l b
+--   type YMapF (Maybe s) a l b = Maybe (YMapF s a l b)
+--   type YMapC (Maybe s) a l b =        YMapC s a l b
+--   xmapn = fmapSetter xmapn
+--   ymapn = fmapSetter ymapn
+
+fmapSetter :: Functor f => Setter s t a b -> Setter (f s) (f t) a b
+fmapSetter s0 f = pure . fmap (untainted . s0 f)
+
+isoSetter :: Iso s t s0 t0 -> Setter s0 t0 a b -> Setter s t a b
+isoSetter i s f = pure . (Control.Lens.Iso.from i `under` (untainted . s f))
+
+compIso :: Iso ((f :.: g) a) ((f :.: g) b) (f (g a)) (f (g b))
+compIso = coerced
+
+par1Iso :: Iso (Par1 a) (Par1 b) a b
+par1Iso = coerced
+
+rec1Iso :: Iso (Rec1 f a) (Rec1 f b) (f a) (f b)
+rec1Iso = coerced
+
+m1Iso :: Iso (M1 i c f a) (M1 i c f b) (f a) (f b)
+m1Iso = coerced
+
+coercedSetter :: (Coercible s s0, Coercible t t0) => Setter s0 t0 a b -> Setter s t a b
+coercedSetter = isoSetter coerced
+
+
+type family BiLensLike f s t a b where
+  BiLensLike f s t (a0, a1) (b0, b1) = (a0 -> f b0) -> (a1 -> f b1) -> s -> f t
+
+type BiLens s t a b = forall f. Functor f => BiLensLike f s t a b
+
+type BiTraversal s t a b = forall f. Applicative f => BiLensLike f s t a b
+
+type BiSetter s t a b = forall f. Settable f => BiLensLike f s t a b
+
+biSwap :: BiLensLike f s t (a0, a1) (b0, b1) -> BiLensLike f s t (a1, a0) (b1, b0)
+biSwap = flip
+
+bim :: Monad m => LensLike m s t0 a0 b0 -> LensLike m t0 t a1 b1 -> BiLensLike m s t (a0, a1) (b0, b1)
+bim f g h i x = join (g i <$> f h x)
+
+biset :: Setter s t0 a0 b0 -> Setter t0 t a1 b1 -> BiSetter s t (a0, a1) (b0, b1)
+biset f g h i = g i . untainted . f h
+
+biSet :: Bifunctor p => BiSetter (p a0 a1) (p b0 b1) (a0, a1) (b0, b1)
+biSet f g = pure . bimap (untainted . f) (untainted . g)
+
+biSum :: BiLens ((f :+: g) a) ((f :+: g) b) (f a, g a) (f b, g b)
+biSum f _ (L1 x) = L1 <$> f x
+biSum _ g (R1 y) = R1 <$> g y
+
+biEither :: BiLens (Either a0 a1) (Either b0 b1) (a0, a1) (b0, b1)
+biEither f _ (Left  x) = Left  <$> f x
+biEither _ g (Right y) = Right <$> g y
+
+biProd :: BiTraversal ((f :*: g) a) ((f :*: g) b) (f a, g a) (f b, g b)
+biProd f g (x :*: y) = liftA2 (:*:) (f x) (g y)
+
+biTup :: BiTraversal (a0, a1) (b0, b1) (a0, a1) (b0, b1)
+biTup f g (x, y) = liftA2 (,) (f x) (g y)
+
+diSet :: Profunctor p => BiSetter (p a0 a1) (p b0 b1) (b0, a1) (a0, b1)
+diSet f g = pure . dimap (untainted . f) (untainted . g)
+
+biArrow :: Arrow arr => BiSetter (arr a0 a1) (arr b0 b1) (b0, a1) (a0, b1)
+biArrow f g ar = pure $ arr (untainted . g) . ar . arr (untainted . f)
+
+biSetter :: BiSetter s t (s0, s1) (t0, t1) -> Setter s0 t0 a b -> Setter s1 t1 a b -> Setter s t a b
+biSetter f g h i = g i `f` h i
+
+-- bi :: Setter _ _ _ _ -> Setter _ _ _ _ -> BiSetter s t a0 b0 a1 b1
+
+-- biSetter :: Setter s t s0 t0 -> Setter s t s1 t1 -> Setter s0 t0 a b -> Setter s1 t1 a b -> Setter s t a b
+-- biSetter fx fy gx gy f = undefined
+
+-- arrowSetter ::
+-- x::Setter s0 t0 a b                   :: Settable f => (b -> f a) -> s0 -> f t0
+-- x::Setter t1 s1 a b                   :: Settable f => (a -> f b) -> s1 -> f t1
+-- z::Setter (arr s0 s1) (arr t0 t1) a b :: Settable f => (a -> f b) -> arr s0 s1 -> arr t0 t1
+
+
+
+-- (xmapn :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter (Maybe s) (Maybe (XMapF s a l b)) (X       a  ) (Recurse l b)) -> (xmapn :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter s (XMapF s a l b) (X       a  ) (Recurse l b))
+-- ymapn :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
+
+-- xmapn :: forall k0 s (a :: k0) (l :: Locking) b (f :: * -> *). (XMapN s, Settable f, XMapC s a l b) => (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
+-- xmapn :: forall k0 s (a :: k0) (l :: Locking) b (f :: * -> *). (XMapN s, Settable f, XMapC s a l b) => (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
+
+-- (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
+
+-- (a -> f b) -> s -> f t
 
 -- f :: a -> b
 -- f :: (RecurseL Void, Int) -> (RecurseU (RecurseL Void, Int), Int)

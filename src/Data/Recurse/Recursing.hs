@@ -5,7 +5,14 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE InstanceSigs #-}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
@@ -19,34 +26,248 @@ import Data.Recurse
 import Prelude hiding (id, (.))
 import Data.Kind
 import Data.X
-import Data.X.Map (XMap(..))
+import Data.X.Map hiding (XMap)
 import Unsafe.Coerce
 import Control.Category (Category(..))
 import Data.Function (fix)
 import Control.Lens.Setter ((%~))
+import Data.Void
 
 -- class Recursing (a :: *) where
 --   type RecursingBuilder a t :: *
   -- rec :: (forall t. RecursingBuilder a t) -> Recurse 'Locked a
 
--- | `unsafeCoerce` @`XX` k@ to @t@ and wrap with `RecurseLocked`
-lockXX :: XX k -> RecurseL t
-lockXX (X x) = RecurseLocked . unsafeCoerce $ x
+type Y = (X :: * -> *)
+
+type XY = X Y
+
+type RVoid = Recurse 'Locked Void
 
 
--- | `xmap`-like
-(~%~) :: forall a a1 a2 b b1 b2 b3 c.
-         ( XMap b2 a a2 b3
-         , XMap b  c a1 b1 ) =>
-         (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
-(f ~%~ g) ar = (xmap %~ f) . ar . (ymap %~ g)
+lockA :: forall a b. (a -> b) -> (RecurseU a -> XY)
+lockA _ (RecurseUnlocked x) = X (unsafeCoerce x)
 
--- | `ymap`-like
-(%~%) :: forall a a1 a2 b b1 b2 b3 c.
-         ( XMap a b2 a2 b3
-         , XMap c b  a1 b1 ) =>
-         (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
-(f %~% g) ar = (ymap %~ f) . ar . (xmap %~ g)
+unlockV :: XY -> RVoid
+unlockV (X x) = RecurseLocked (unsafeCoerce x)
+
+-- rec ::
+--     (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
+-- rec = RecurseLocked . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
+
+class ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
+      , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
+      , XMapN (YMapF s Y 'Unlocked t)
+      , XMapN s
+      , YMapC s Y 'Unlocked t
+      ) => Recursing t s where
+        rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
+        rec = RecurseLocked . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
+
+instance ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
+         , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
+         , XMapN (YMapF s Y 'Unlocked t)
+         , XMapN s
+         , YMapC s Y 'Unlocked t
+         ) => Recursing t s where
+        rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
+        rec = RecurseLocked . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
+
+
+
+-- lockAs :: forall a b k. (XMapN b, YMapC b (X :: k -> *) 'Unlocked a) =>
+--                 (a -> b) -> a -> YMapF b (X :: k -> *) 'Unlocked a
+-- lockAs f = ((ymapn :: Setter b (YMapF b (X :: k -> *) 'Unlocked a) (Recurse 'Unlocked a) (X (X :: k -> *))) %~ lockA' f) . f
+
+-- biLockV :: forall a b k. (XMapN a, XMapN b, XMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) =>
+--   (XMapF a (X :: k -> *) 'Locked Void -> b) -> a -> YMapF b (X :: k -> *) 'Locked Void
+-- biLockV f = ((ymapn :: Setter b (YMapF b (X :: k -> *) 'Locked Void) (Recurse 'Locked Void) (X (X :: k -> *))) %~ (lockV' :: Recurse 'Locked Void -> X (X :: k -> *))) . f . ((xmapn :: Setter a (XMapF a (X :: k -> *) 'Locked Void) (X (X :: k -> *)) (Recurse 'Locked Void)) %~ (unlockV' :: X (X :: k -> *) -> Recurse 'Locked Void))
+
+
+
+
+
+-- type T0   k = X (X :: k -> *) -> Recurse 'Locked Void
+-- type T1 a k = (XMapN a, XMapC a (X :: k -> *) 'Locked Void) => (X (X :: k -> *) -> Identity (Recurse 'Locked Void)) -> a -> Identity (XMapF a (X :: k -> *) 'Locked Void)
+-- type T2 a k = (XMapN a, XMapC a (X :: k -> *) 'Locked Void) => a -> XMapF a (X :: k -> *) 'Locked Void
+
+-- f1 :: forall a k. T2 a k
+-- f1 = (runIdentity . (xmapn :: T1 a k) (Identity . (unlockV' :: T0 k)))
+
+-- type T22 a b k = (XMapN a, XMapC a (X :: k -> *) 'Locked Void) => (XMapF a (X :: k -> *) 'Locked Void -> b) -> a -> b
+
+-- f1' :: forall a b k. T22 a b k
+-- f1' = (. (runIdentity . (xmapn :: T1 a k) (Identity . (unlockV' :: T0 k))))
+
+-- type T3   k = Recurse 'Locked Void -> X (X :: k -> *)
+-- type T4 a k = (XMapN a, YMapC a (X :: k -> *) 'Locked Void) => a -> YMapF a (X :: k -> *) 'Locked Void
+
+-- f2 :: forall a k. T4 a k
+-- f2 = runIdentity . ymapn (Identity . (lockV' :: T3 k))
+
+-- type T5 a b k = (a -> b) -> (Recurse 'Unlocked a -> X (X :: k -> *))
+-- type T6 a b k = (XMapN b, YMapC b (X :: k -> *) 'Unlocked a) => (a -> b) -> a -> YMapF b (X :: k -> *) 'Unlocked a
+
+-- f3 :: forall a b k. T6 a b k
+-- f3 r = (over ymapn ((lockA' :: T5 a s k) r)) . r
+
+-- type T7 a b k = (XMapN a, XMapN b, XMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) => (XMapF a (X :: k -> *) 'Locked Void -> b) -> a -> YMapF b (X :: k -> *) 'Locked Void
+
+-- f4 :: forall a b k. T7 a b k
+-- f4 = ((runIdentity . ymapn (Identity . (lockV' :: T3 k))) .) . (. (runIdentity . (xmapn :: T1 a k) (Identity . (unlockV' :: T0 k))))
+
+
+
+-- f5 :: forall b t k. (YMapF (YMapF b (X :: * -> *) 'Locked Void) (X :: * -> *) 'Unlocked t ~ t, XMapN t,
+--   XMapN (YMapF b (X :: * -> *) 'Locked Void), XMapN b, YMapC b (X :: * -> *) 'Locked Void,
+--   XMapC t (X :: * -> *) 'Locked Void,
+--   YMapC (YMapF b (X :: * -> *) 'Locked Void) (X :: * -> *) 'Unlocked t) =>
+--   (XMapF t (X :: * -> *) 'Locked Void -> b) -> t
+
+-- f5 = fix . (f3 :: T6 a b Type) . (f4 :: T7 a b Type)
+
+
+------
+
+-- type T7 a b k = (XMapN a, XMapN b, XMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) => (XMapF a (X :: k -> *) 'Locked Void -> b) -> a -> YMapF b (X :: k -> *) 'Locked Void
+
+-- f4 :: forall a b k. T7 a b k
+-- f4 = ((f2 :: T4 b k) .) . (. (f1 :: T2 a k))
+
+
+-- fix . f3 . (f2 .) . (. f1)
+--   :: (YMapF (YMapF a X 'Locked Void) X 'Unlocked t ~ t, XMapN t,
+--       XMapN (YMapF a X 'Locked Void), XMapN a, XMapC t X 'Locked Void,
+--       YMapC a X 'Locked Void,
+--       YMapC (YMapF a X 'Locked Void) X 'Unlocked t) =>
+--      (XMapF t X 'Locked Void -> a) -> t
+
+--  f >>= k = \ r -> k (f r) r
+
+-- xmapn :: forall k0 s (a :: k0) (l :: Locking) b (f :: * -> *).  (XMapN s, Settable f, XMapC s a l b) =>
+--      (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
+
+
+
+-- type T1 k = X (X :: k -> *) -> Recurse 'Locked Void
+-- type T2 a k =
+
+
+-- ff = fix . ((.) =<< (ymapn %~) . lockA') . ((runIdentity.ymapn(Identity. lockV')) .) . (. (runIdentity.xmapn(Identity.(unlockV'::T1 k))))
+
+-- fix . ((.) =<< (ymapn %~) . lockA') . ((ymapn %~ lockV') .) . (. (xmapn %~ (unlockV'::XX k->RecurseL Void)))
+--   :: (YMapF (YMapF s X 'Locked Void) X 'Unlocked t ~ t, XMapN t,
+--       XMapN (YMapF s X 'Locked Void), XMapN s, XMapC t X 'Locked Void,
+--       YMapC s X 'Locked Void,
+--       YMapC (YMapF s X 'Locked Void) X 'Unlocked t) =>
+--      (XMapF t X 'Locked Void -> s) -> t
+
+
+
+
+-- (.) :: (b -> c) -> (a -> b) -> a -> c
+
+-- (.!) :: (b -> c) -> (a -> b) ->
+
+-- c2 :: (b -> c) -> (b1 -> b) -> (a -> b1)
+
+-- \x y z -> x . y . z :: (b -> c) -> (b1 -> b) -> (a -> b1) -> a -> c
+
+
+-- (RecurseLocked :: _)
+-- . (fix :: _)
+-- . (\f -> ((ymapn :: Setter (YMapF b (X :: k -> *) 'Locked Void) (YMapF (YMapF b (X :: k -> *) 'Locked Void) (X :: k -> *) 'Unlocked a) (Recurse 'Unlocked a) (X (X :: k -> *))) %~ lockA' f) . f :: (a -> YMapF b (X :: k -> *) 'Locked Void) -> a -> YMapF (YMapF b (X :: k -> *) 'Locked Void) (X :: k -> *) 'Unlocked a)
+-- . (\f -> ((ymapn :: Setter b (YMapF b (X :: k -> *) 'Locked Void) (Recurse 'Locked Void) (X (X :: k -> *))) %~ (lockV' :: Recurse 'Locked Void -> X (X :: k -> *))) . f . ((xmapn :: Setter a (XMapF a (X :: k -> *) 'Locked Void) (X (X :: k -> *)) (Recurse 'Locked Void)) %~ (unlockV' :: X (X :: k -> *) -> Recurse 'Locked Void)))
+
+-- rec :: forall b t k. ((YMapF
+--          (YMapF b (X :: k -> *) 'Locked Void)
+--          (X :: k -> *)
+--          'Unlocked
+--          t)
+--       ~
+--       t,
+--       XMapN t, XMapN (YMapF b (X :: k -> *) 'Locked Void), XMapN b,
+--       YMapC b (X :: k -> *) 'Locked Void,
+--       XMapC t (X :: k -> *) 'Locked Void,
+--       YMapC
+--         (YMapF b (X :: k -> *) 'Locked Void)
+--         (X :: k -> *)
+--         'Unlocked
+--         t) =>
+--      (XMapF t (X :: k -> *) 'Locked Void -> b) -> Recurse 'Locked t
+
+
+-- rec = RecurseLocked . fix . (\f -> ((ymapn :: Setter (YMapF b (X :: k -> *) 'Locked Void) (YMapF (YMapF b (X :: k -> *) 'Locked Void) (X :: k -> *) 'Unlocked a) (Recurse 'Unlocked a) (X (X :: k -> *))) %~ lockA' f) . f) . (\f -> ((ymapn :: Setter b (YMapF b (X :: k -> *) 'Locked Void) (Recurse 'Locked Void) (X (X :: k -> *))) %~ (lockV' :: Recurse 'Locked Void -> X (X :: k -> *))) . f . ((xmapn :: Setter t (XMapF t (X :: k -> *) 'Locked Void) (X (X :: k -> *)) (Recurse 'Locked Void)) %~ (unlockV' :: X (X :: k -> *) -> Recurse 'Locked Void))) :: forall b t k.
+
+-- lockAs :: forall a b k. (XMapN b, YMapC b (X :: k -> *) 'Unlocked a) =>
+--                 (a -> (YMapF b (X :: k -> *) 'Locked Void)) -> a -> YMapF (YMapF b (X :: k -> *) 'Locked Void) (X :: k -> *) 'Unlocked a
+
+-- biLockV :: forall a b k. (XMapN a, XMapN b, XMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) =>
+--   (XMapF a (X :: k -> *) 'Locked Void -> b) -> a -> (YMapF b (X :: k -> *) 'Locked Void)
+
+
+
+
+-- xmapn :: X a -> Rec b
+-- ymapn :: Rec b -> X a
+-- Rec a -> Rec b
+-- X a -> X b
+-- (Rec b -> X b) . f . (X a -> Rec a)
+
+
+-- biLockV :: forall a b k. (XMapN a, XMapN b, YMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) =>
+--   (YMapF a (X :: k -> *) 'Locked Void -> b) -> a -> YMapF b (X :: k -> *) 'Locked Void
+--   biLockV f = (lockedV :: b -> YMapF b (X :: k -> *) 'Locked Void) . f . (lockedV :: YMap
+
+-- biLockV :: (XMapN s1, XMapN s, YMapC s1 (X :: * -> *) 'Locked Void, YMapC s (X :: * -> *) 'Locked Void) =>
+--     (YMapF s1 (X :: * -> *) 'Locked Void -> s) -> s1 -> YMapF s (X :: * -> *) 'Locked Void
+-- biLockV = \f -> (ymapn %~ lockV) . f . (ymapn %~ lockV)
+
+-- biLockV' :: XMapN a, XMapN b, YMapC a (X :: k -> *) 'Locked Void, YMapC b (X :: k -> *) 'Locked Void) =>
+--   (YMapF a (X :: k -> *) 'Locked Void -> b) -> a -> YMapF b (X :: k -> *) 'Locked Void
+-- biLockV' = \f -> (ymapn :: Setter
+
+-- ymapn :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
+
+-- lockAs :: forall a b. (XMapN b, YMapC b (X :: * -> *) 'Unlocked a) =>
+--                 (a -> b) -> a -> YMapF b (X :: * -> *) 'Unlocked a
+-- lockAs f = (ymapn %~ lockA f) . f
+
+-- rec :: (YMapF (YMapF s (X :: * -> *) 'Locked Void) (X :: * -> *) 'Unlocked t ~ t, XMapN t,
+--   XMapN (YMapF s (X :: * -> *) 'Locked Void), XMapN s, YMapC s (X :: * -> *) 'Locked Void,
+--   YMapC t (X :: * -> *) 'Locked Void,
+--   YMapC (YMapF s (X :: * -> *) 'Locked Void) (X :: * -> *) 'Unlocked t) =>
+--   (YMapF t (X :: * -> *) 'Locked Void -> s) -> Recurse 'Locked t
+-- rec = RecurseLocked . fix . lockAs . biLockV
+
+-- biYmapn = biSetter biArrow (ymapn
+
+-- ymapn :: (XMapN s, Settable f, YMapC * s a l b) => (Recurse l b -> f (X * a)) -> s -> f (YMapF * s a l b)
+
+-- lockingV :: (XMapN s1, XMapN s0, Arrow arr, YMapC s1 X 'Locked Void,
+--       YMapC (s0 X 'Locked Void) =>
+--      arr (YMapF s0 X 'Locked Void) s1
+--      -> arr s0 (YMapF s1 X 'Locked Void)
+-- lockingV = biSetter biArrow ymapn (ymapn :: Setter s1 (YMapF s1 (a :: * -> *) 'Locked Void) (Recurse 'Locked Void) (X (a :: * -> *))) %~ lockV
+
+-- ff = fix . (\f -> ((ymapn %~ lockA f) .) f) . (biSetter biArrow ymapn ymapn %~ lockV)
+
+ -- (ymapn %~ lockA f)
+
+-- xrec :: (a -> b) -> a -> c
+
+-- -- | `xmap`-like
+-- (~%~) :: forall a a1 a2 b b1 b2 b3 c.
+--          ( XMap b2 a a2 b3
+--          , XMap b  c a1 b1 ) =>
+--          (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
+-- (f ~%~ g) ar = (xmap %~ f) . ar . (ymap %~ g)
+
+-- -- | `ymap`-like
+-- (%~%) :: forall a a1 a2 b b1 b2 b3 c.
+--          ( XMap a b2 a2 b3
+--          , XMap c b  a1 b1 ) =>
+--          (a1 -> b1) -> (a2 -> b3) -> (b2 -> b) -> a -> c
+-- (f %~% g) ar = (ymap %~ f) . ar . (xmap %~ g)
 
 
 
@@ -55,7 +276,7 @@ lockXX (X x) = RecurseLocked . unsafeCoerce $ x
 --   rec :: (b4 -> b3) -> RecurseL b
 
 
-rec f = RecurseLocked . fix $ (lockXX %~% lockXX) . (lock ~%~ lock) $ f
+-- rec f = RecurseLocked . fix $ (lockXX %~% lockXX) . (lock ~%~ lock) $ f
 
 tr4 :: (Recurse 'Locked t, Int) -> (Recurse 'Locked (Recurse 'Locked t, Int), Int)
 tr4 = undefined
