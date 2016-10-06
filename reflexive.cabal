@@ -19,6 +19,7 @@ library
                      , Data.X.Map
                      , Data.X.Map.TH
                      , Data.Recurse
+                     , Data.Recurse.Equality
                      , Data.Recurse.Recursing
   ghc-options:         -Wall
   build-depends:       base >= 4.9.0.0

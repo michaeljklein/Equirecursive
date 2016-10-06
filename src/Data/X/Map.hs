@@ -101,44 +101,6 @@ class XMap s t a b | s b -> t, t a -> s where
   -- | `ymap` is the complement to `xmap`, reversing its effects.
   ymap :: Setter t s a b
 
--- s b -> t
--- t a -> s
--- s -> a, unless atom: s a -> atom
--- t -> b, unless atom: t b -> atom
---                atom => s ~ t
-
--- --------------------- atom ~ (Int, Bool, Etc)
--- s b -> t
--- t a -> s
--- s atom -> a
--- t atom -> b
--- s a b -> atom
--- t a b -> atom
-
--- These are the minimum determining sets:
---     s | t | a | b | at
---   [ 1 | 1 | 0 | 0 | 1 ]
---   [ 1 | 0 | 1 | 1 | 0 ]
---   [ 1 | 0 | 0 | 1 | 1 ]
---   [ 0 | 1 | 1 | 1 | 0 ]
---   [ 0 | 1 | 1 | 0 | 1 ]
-
-
--- class (Contains a s ~ True, Contains b t ~ 'True) => XMapContains s t a b | s -> a, t -> b, s b -> t, t a -> s where
---   xmapCont :: Setter s t a b
---   ymapCont :: Setter t s a b
-
--- class XMap2 (s :: *) (t :: *) k (l :: Locking) (b :: *) | s -> k, t -> l, t -> b, s l b -> t, t k -> s where
---   xmap2 :: Setter s t (XX k) (Recurse l b)
---   ymap2 :: Setter t s (XX k) (Recurse l b)
-
--- instance XMap2 (XX k) (Recurse l b) k l b where
---   xmap2 = undefined
---   ymap2 = undefined
-
--- class XMapContains s t k lk b (l :: Bool) (r :: Bool) | s -> k, t -> lk, t -> b, s lk b -> t, t k -> s where -- | s -> k, t -> lk, t -> b, s -> l, t -> r where
---   bixmap :: Setter s t (XX k) (Recurse lk b)
---   biymap :: Setter t s (XX k) (Recurse lk b)
 
 type family (+?+) (a :: Constraint) (b :: Constraint) where
   () +?+ b  = b
@@ -364,58 +326,8 @@ biArrow f g ar = pure $ arr (untainted . g) . ar . arr (untainted . f)
 biSetter :: BiSetter s t (s0, s1) (t0, t1) -> Setter s0 t0 a b -> Setter s1 t1 a b -> Setter s t a b
 biSetter f g h i = g i `f` h i
 
--- bi :: Setter _ _ _ _ -> Setter _ _ _ _ -> BiSetter s t a0 b0 a1 b1
-
--- biSetter :: Setter s t s0 t0 -> Setter s t s1 t1 -> Setter s0 t0 a b -> Setter s1 t1 a b -> Setter s t a b
--- biSetter fx fy gx gy f = undefined
-
--- arrowSetter ::
--- x::Setter s0 t0 a b                   :: Settable f => (b -> f a) -> s0 -> f t0
--- x::Setter t1 s1 a b                   :: Settable f => (a -> f b) -> s1 -> f t1
--- z::Setter (arr s0 s1) (arr t0 t1) a b :: Settable f => (a -> f b) -> arr s0 s1 -> arr t0 t1
 
 
-
--- (xmapn :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter (Maybe s) (Maybe (XMapF s a l b)) (X       a  ) (Recurse l b)) -> (xmapn :: forall (a :: k0) (l :: Locking) (b :: *). XMapC s a l b => Setter s (XMapF s a l b) (X       a  ) (Recurse l b))
--- ymapn :: forall (a :: k0) (l :: Locking) (b :: *). YMapC s a l b => Setter s (YMapF s a l b) (Recurse l b) (X       a  )
-
--- xmapn :: forall k0 s (a :: k0) (l :: Locking) b (f :: * -> *). (XMapN s, Settable f, XMapC s a l b) => (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
--- xmapn :: forall k0 s (a :: k0) (l :: Locking) b (f :: * -> *). (XMapN s, Settable f, XMapC s a l b) => (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
-
--- (X a -> f (Recurse l b)) -> s -> f (XMapF s a l b)
-
--- (a -> f b) -> s -> f t
-
--- f :: a -> b
--- f :: (RecurseL Void, Int) -> (RecurseU (RecurseL Void, Int), Int)
--- (. ymapc (XX -> RecurseU a)       f :: (RecurseL Void, Int) -> (XX, Int)
--- (  ymapc (XX -> RecurseL Void) .) _ :: (XX, Int) -> (XX, Int)
-
-
--- f :: (RecurseU t, Int) -> (RecurseU (RecurseU t, Int), Int)
--- (. ymapc (XX -> (RecurseU t, Int))) f :: (RecurseU t, Int) -> (RecurseU XX, Int)
--- (. ymapc (XX -> RecurseU XX)) _ :: (RecurseU t, Int) -> (XX, Int)
--- (ymapc (XX -> RecurseU t) .) _ :: (XX, Int) -> (XX, Int)
-
--- type family XMapF s (l :: Locking) b :: *
--- type instance XMapF (XX k) l b = Recurse l b
--- type instance XMapF (Recurse l0 b0) l b = Recurse l0 b0
--- type instance XMapF Int l b = Int
--- type instance XMapF (s0, s1) l b = (XMapF s0 l b, XMapF s1 l b)
-
--- type family YMapF s (l :: Locking) b :: *
--- type instance YMapF (XX k) l b =
-
--- type family Contains (a :: *) (b :: *) :: Bool
--- type instance Contains a Int = 'False
--- type instance Contains (XX k0) (XX k1) = 'True
--- type instance Contains a (b, c) = Contains a b :|: Contains a c
-
-type family (a :: Bool) :|: (b :: Bool) where
-  'True  :|: 'True   = 'True
-  'True  :|: 'False  = 'True
-  'False :|: 'True   = 'True
-  'False :|: 'False  = 'False
 
 
 -- Ok. If I never recurse on Rec, and always replace XX -> Rec _, this will always be reversable, which will also allow for generalized pulls.
