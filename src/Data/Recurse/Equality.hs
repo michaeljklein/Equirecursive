@@ -22,23 +22,32 @@ module Data.Recurse.Equality where
 import Data.Type.Equality
 import Data.Kind
 import GHC.Generics
--- import Data.Recurse
+import Data.Recurse
 import Data.Recurse.Recursing
 import Data.Lifted
 import Data.X
-
+import Unsafe.Coerce
 
 -----------------------------------------------------------------------------------
 
 -- | Likely unfinished, but this is will be the interface to the result of this module
--- class (Req a b ~ eq) => RecurseEq a b eq where
---   req :: a -> b -> Maybe (a :~: b)
--- instance (Req a b ~ 'True) => RecurseEq a b 'True where
---   req _ _ = Just Refl
--- instance (Req a b ~ 'False) => RecurseEq a b 'False where
---   req _ _ = Nothing
+class (Req a a b b 'Z ~ eq) => RecurseEq (a :: *) (b :: *) (eq :: Bool) where
+  req :: a -> b -> Maybe (a :~: b)
+
+instance (Req a a b b 'Z ~ 'True) => RecurseEq a b 'True where
+  req _ _ = Just . unsafeCoerce $ Refl
+
+instance (Req a a b b 'Z ~ 'False) => RecurseEq a b 'False where
+  req _ _ = Nothing
 
 -----------------------------------------------------------------------------------
+
+-- So, somehow, the counting isn't working properly (likely the switch)
+-- X( Req (Int, (Int, XY)) (Int, (Int, XY)) (Int, (Int, (Int, XY))) (Int, (Int, (Int, XY))) ('S ('S 'Z)) )
+--   :: X 'True
+-- X( Req (Int, (Int, XY)) (Int, (Int, XY)) (Int, (Int, (Int, XY))) (Int, (Int, (Int, XY))) (('S 'Z)) )
+--   :: X 'False
+
 
 -- | Recurse, checking equality until `XY` is reached.
 -- Then, pass the lower depth to the second stage.
@@ -47,22 +56,7 @@ type family Req (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool
 type family ReqExpand (ar :: *) (br :: *) (b :: *) (d :: Nat) where
   ReqExpand ar br XY d = 'True -- Is this really always True? Yup, if a == b, then True.
   ReqExpand ar br b  d = Deq ar ar br b d
-type instance Req ar XY br b d = ReqExpand ar br b d
-
-type family ReqV1 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) where
-  ReqV1 ar a br (V1 b) d = Req ar a  br b ('S d)
-  ReqV1 ar a br    XY  d = Deq br XY ar a     d
-  ReqV1 ar a br     b  d = 'False
-type instance Req ar (V1 a) br b d = ReqV1 ar a br b d
-
-type family ReqTuple2 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) where
-  ReqTuple2 ar a0 a1 br (b0, b1) d = Req ar a0 br b0 ('S d) :&& Req ar a1 br b1 ('S d)
-  ReqTuple2 ar a0 a1 br  XY      d = ReqExpand br ar (a0, a1) d
-  ReqTuple2 ar a0 a1 br  b       d = 'False
-type instance Req ar (a0, a1) br b d = ReqTuple2 ar a0 a1 br b d
-
-type instance Req ar Int br b d = Int == b
-
+type instance Req ar XY br b d = ReqExpand br b XY d
 
 -----------------------------------------------------------------------------------
 
@@ -75,26 +69,25 @@ type family DeqExpand (ar :: *) (br :: *) (b :: *) (d :: Nat) where
   DeqExpand ar br b  d = Deq ar ar br b d
 type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
 
-type family DeqV1 (ar :: *) (a0 :: *) (br :: *) (b :: *) (d :: Nat) where
-  DeqV1 ar a br (V1 b) d = Deq ar a br b  d
-  DeqV1 ar a br  XY    d = Deq ar a br br d
-  DeqV1 ar a br     b  d = 'False
+--------------------------------------------------------------------------------------------------------
 
--- | Deq template for an n-ary data constructor. Req template is similar
--- type family DeqType (ar :: *) (a0 :: *) .. (an :: *) (br :: *) (b :: *) (d :: Nat) where
---   DeqType ar a0 .. an br (Type b0 .. bn) d = Deq ar a0 br b0 d :&& .. :&& Deq ar an br bn d
---   DeqType ar a0 .. an br      XY          = Deq ar (Type a0 .. an) br br d
---   DeqType ar a0 .. an br       b          = 'False
--- type instance Deq ar (Type a0 .. an) (br :: *) b d = DeqType ar a0 .. an br b d
+-- type family Req_1627612039 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+--   Req_1627612039 ar a0 a1 br ((,) b0 b1) d = (:&&) (Req ar a0 br b0 ('S d)) (Req ar a1 br b1 ('S d))
+--   Req_1627612039 ar a0 a1 br XY          d = ReqExpand br ar ((,) a0 a1) d
+--   Req_1627612039 ar a0 a1 br b           d = 'False
 
+-- type instance Req ar ((,) a0 a1) br b d = Req_1627612039 ar a0 a1 br b d
 
-type family DeqTuple2 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) where
-  DeqTuple2 ar a0 a1 br (b0, b1) d = Deq ar a0 br b0 d :&& Deq ar a1 br b1 d
-  DeqTuple2 ar a0 a1 br  XY      d = Deq ar (a0, a1) br br d
-  DeqTuple2 ar a0 a1 br  b       d = 'False
-type instance Deq ar (a0, a1) br b ('S d) = DeqTuple2 ar a0 a1 br b d
+-- --------------------------------------------------------------------------------------------------------
 
-type instance Deq ar Int br b ('S d) = Int == b
+-- type family Deq_1627612040 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+--   Deq_1627612040 ar a0 a1 br ((,) b0 b1) d = (:&&) (Deq ar a0 br b0 d) (Deq ar a1 br b1 d)
+--   Deq_1627612040 ar a0 a1 br XY d = Deq ar (GHC.Tuple.(,) a0 a1) br br d
+--   Deq_1627612040 ar a0 a1 br b d = False
+
+-- type instance Deq ar ((,) a0 a1) br b ('S d) = Deq_1627612040 ar a0 a1 br b d
+
+--------------------------------------------------------------------------------------------------------
 
 
 

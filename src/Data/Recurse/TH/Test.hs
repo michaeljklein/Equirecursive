@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds #-}
 module Data.Recurse.TH.Test where
 
 import Data.X
@@ -19,70 +20,37 @@ import Data.Semigroup (Option, Max, Min)
 import Data.Functor.Identity
 import Control.Monad.ST
 import Data.Proxy (Proxy)
+import Language.Haskell.TH (tupleTypeName)
 
-
--- $(deqInstances ''[])
-
-$(deqInstances ''Maybe)
-
-$(deqInstances ''IO)
-
-$(deqInstances ''V1)
-
-$(deqInstances ''U1)
-
-$(deqInstances ''Par1)
-
-$(deqInstances ''ReadP)
-
-$(deqInstances ''ReadPrec)
-
-$(deqInstances ''Last)
-
-$(deqInstances ''First)
-
-$(deqInstances ''Product)
-
-$(deqInstances ''Sum)
-
-$(deqInstances ''Dual)
-
-$(deqInstances ''STM)
-
-$(deqInstances ''ZipList)
-
+$(deqInstances ''Bool)
 $(deqInstances ''Complex)
-
-$(deqInstances ''NonEmpty)
-
-$(deqInstances ''Option)
-
-$(deqInstances ''Max)
-
-$(deqInstances ''Min)
-
-$(deqInstances ''Identity)
-
--- $(deqInstances ''(->))
-
+$(deqInstances ''Dual)
 $(deqInstances ''Either)
-
--- $(deqInstances ''(,))
-
--- $(deqInstances ''(,,))
-
--- $(deqInstances ''(,,,))
-
--- $(deqInstances ''(,,,,))
-
--- $(deqInstances ''(,,,,,))
-
-$(deqInstances ''ST)
-
-$(deqInstances ''Proxy)
-
+$(deqInstances ''First)
+$(deqInstances ''IO)
+$(deqInstances ''Identity)
+$(deqInstances ''Int)
 $(deqInstances ''K1)
-
+$(deqInstances ''Last)
+$(deqInstances ''Max)
+$(deqInstances ''Maybe)
+$(deqInstances ''Min)
+$(deqInstances ''NonEmpty)
+$(deqInstances ''Option)
+$(deqInstances ''Par1)
+$(deqInstances ''Product)
+$(deqInstances ''Proxy)
+$(deqInstances ''ReadP)
+$(deqInstances ''ReadPrec)
+$(deqInstances ''ST)
+$(deqInstances ''STM)
+$(deqInstances ''Sum)
+$(deqInstances ''U1)
+$(deqInstances ''V1)
+$(deqInstances ''ZipList)
+$(deqInstances ''[])
+$(fmap concat . mapM (deqInstances . tupleTypeName) $ 0 : [2..2]) -- [2..62]
+-- $(deqInstances ''(->))
 
 
 -- Rec1

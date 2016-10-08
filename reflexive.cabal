@@ -23,6 +23,7 @@ library
                      , Data.Recurse.Recursing
                      , Data.Recurse.TH
                      , Data.Recurse.TH.Test
+                     , Data.Lifted
   ghc-options:         -Wall
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3
