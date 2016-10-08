@@ -29,13 +29,6 @@ import Data.Function (fix)
 import Control.Lens.Setter ((%~))
 import Data.Void
 
-
--- | Synonym for ease of typing
-type Y = (X :: * -> *)
-
--- | Synonym for ease of typing
-type XY = X Y
-
 -- | Since @`Recurse` `Locked`@ isn't exported, this should effectively
 -- be equivalent to @forall t. t@
 type RecurseV = Recurse 'Locked Void
