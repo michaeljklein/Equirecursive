@@ -53,27 +53,3 @@ $(fmap concat . mapM (deqInstances . tupleTypeName) $ 0 : [2..2]) -- [2..62]
 -- $(deqInstances ''(->))
 
 
--- Rec1
--- (URec Char)
--- (URec Double)
--- (URec Float)
--- (URec Int)
--- (URec Word)
--- (URec (Ptr ()))
--- ArrowMonad
--- WrappedMonad
--- Arg
--- (:+:)
--- (:*:)
--- (:.:)
--- (Alt * f)
--- (Const * m)
--- (WrappedArrow a b)
--- (M1 i c f)
--- (Product * f g)
--- (Sum * f g)
--- (Compose * * f g)
-
-
-
--- cc = $(((stringL . show) <$> (runMaybeT $ reifyCon ''Either)) >>= litE)

@@ -27,27 +27,31 @@ import Data.Recurse.Recursing
 import Data.Lifted
 import Data.X
 import Unsafe.Coerce
+import Data.Proxy
+
+
+-- TODO: Make Recurse a newtype to make casting safe!
 
 -----------------------------------------------------------------------------------
 
 -- | Likely unfinished, but this is will be the interface to the result of this module
 class (Req a a b b 'Z ~ eq) => RecurseEq (a :: *) (b :: *) (eq :: Bool) where
-  req :: a -> b -> Maybe (a :~: b)
+  req   :: RecurseL a -> RecurseL b -> Maybe (RecurseL a :~: RecurseL b)
+  reqP  :: RecurseL a -> Proxy    b -> Maybe (RecurseL a :~: RecurseL b)
 
 instance (Req a a b b 'Z ~ 'True) => RecurseEq a b 'True where
-  req _ _ = Just . unsafeCoerce $ Refl
+  req  _ _ = Just . unsafeCoerce $ Refl
+  reqP _ _ = Just . unsafeCoerce $ Refl
 
 instance (Req a a b b 'Z ~ 'False) => RecurseEq a b 'False where
-  req _ _ = Nothing
+  req  _ _ = Nothing
+  reqP _ _ = Nothing
+
+-- | Safely cast one recursive datatype to another
+rcast :: (Req a a b b 'Z ~ 'True) => RecurseL a -> RecurseL b
+rcast = unsafeCoerce
 
 -----------------------------------------------------------------------------------
-
--- So, somehow, the counting isn't working properly (likely the switch)
--- X( Req (Int, (Int, XY)) (Int, (Int, XY)) (Int, (Int, (Int, XY))) (Int, (Int, (Int, XY))) ('S ('S 'Z)) )
---   :: X 'True
--- X( Req (Int, (Int, XY)) (Int, (Int, XY)) (Int, (Int, (Int, XY))) (Int, (Int, (Int, XY))) (('S 'Z)) )
---   :: X 'False
-
 
 -- | Recurse, checking equality until `XY` is reached.
 -- Then, pass the lower depth to the second stage.
@@ -69,29 +73,6 @@ type family DeqExpand (ar :: *) (br :: *) (b :: *) (d :: Nat) where
   DeqExpand ar br b  d = Deq ar ar br b d
 type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
 
---------------------------------------------------------------------------------------------------------
-
--- type family Req_1627612039 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
---   Req_1627612039 ar a0 a1 br ((,) b0 b1) d = (:&&) (Req ar a0 br b0 ('S d)) (Req ar a1 br b1 ('S d))
---   Req_1627612039 ar a0 a1 br XY          d = ReqExpand br ar ((,) a0 a1) d
---   Req_1627612039 ar a0 a1 br b           d = 'False
-
--- type instance Req ar ((,) a0 a1) br b d = Req_1627612039 ar a0 a1 br b d
-
--- --------------------------------------------------------------------------------------------------------
-
--- type family Deq_1627612040 (ar :: *) (a0 :: *) (a1 :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
---   Deq_1627612040 ar a0 a1 br ((,) b0 b1) d = (:&&) (Deq ar a0 br b0 d) (Deq ar a1 br b1 d)
---   Deq_1627612040 ar a0 a1 br XY d = Deq ar (GHC.Tuple.(,) a0 a1) br br d
---   Deq_1627612040 ar a0 a1 br b d = False
-
--- type instance Deq ar ((,) a0 a1) br b ('S d) = Deq_1627612040 ar a0 a1 br b d
-
---------------------------------------------------------------------------------------------------------
-
-
-
--- Req (RecurseL (Int, XY)) (RecurseL (Int, XY)) (RecurseL (Int, (Int, XY))) (RecurseL (Int, (Int, XY))) Z = 'True
 
 -- Req ar (Int, XY) br (Int, (Int, XY)) Z
 --   Req ar Int br Int (S Z) = True
@@ -126,88 +107,6 @@ type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
 -- This also means that d = 'S d' for all other instances,
 -- to prevent overlap.
 
--- Migrate this so `d` is fixed by caller, somehow can use with `Deq` without much
--- modification (hopefully to reduce the number of required instances).
-
--- type instance Deq (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat)
-
-
--- -----------------------------------------------------------------------------------
-
--- -- | This instance is the atomic instance type of
--- -- `Req`. It means we've reached finitary equality
--- -- for this path.
--- type family ReqUnit (b :: *) where
---   ReqUnit () = 'True
---   ReqUnit b  = 'False
-
--- type instance Req () b d = ReqUnit b -- or: () == b? What if b == XY? Well, then it's ar == (), which is impossible?
-
--- -----------------------------------------------------------------------------------
-
--- -- | This is the `Functor` instance type of `Req`.
--- -- It's for the simplest type of zip-equality.
--- type family ReqV1 (a :: *) (b :: *) (d :: Nat) where
---   ReqV1 a (V1 b) d = Req a b ('S d)
---   -- ReqV1 a    XY  d = Deq a XY d
---   ReqV1 a     b  d = 'False
-
--- type instance Req (V1 a) b d = ReqV1 a b d
-
--- -----------------------------------------------------------------------------------
-
--- type family ReqU1 (a :: *) (b :: *) (d :: Nat) where
---   ReqU1 a (U1 b) d = Req a b ('S d)
---   ReqU1 a     b  d = 'False
-
--- type instance Req (U1 a) b d = ReqU1 a b d
-
--- -----------------------------------------------------------------------------------
-
--- type family ReqPar1 (a :: *) (b :: *) (d :: Nat) where
---   ReqPar1 a (Par1 b) d = Req a b ('S d)
---   ReqPar1 a       b  d = 'False
-
--- type instance Req (Par1 a) b d = ReqPar1 a b d
-
--- -----------------------------------------------------------------------------------
-
--- type family ReqRec1 (f :: * -> *) (a :: *) (b :: *) (d :: Nat) where
---   ReqRec1 f a (f b) d = Req a b ('S d)
---   ReqRec1 f a    b  d = 'False
-
--- type instance Req (Rec1 f a) b d = ReqRec1 f a b d
-
--- -----------------------------------------------------------------------------------
-
--- type family ReqGSum (f :: * -> *) (g :: * -> *) (a :: *) (b :: *) (d :: Nat) where
---   ReqGSum f g a ((f :+: g) b) d = Req (f a) (f b) ('S d) :&& Req (g a) (g b) ('S d)
---   ReqGSum g f a            b  d = 'False
-
--- type instance Req ((f :+: g) a) b d = ReqGSum f g a b d
-
--- -----------------------------------------------------------------------------------
-
--- type family ReqGProd (f :: * -> *) (g :: * -> *) (a :: *) (b :: *) (d :: Nat) where
---   ReqGProd f g a ((f :*: g) b) d = Req (f a) (f b) ('S d) :&& Req (g a) (g b) ('S d)
---   ReqGProd f g a            b  d = 'False
-
--- type instance Req ((f :*: g) a) b d = ReqGProd f g a b d
-
--- -----------------------------------------------------------------------------------
-
-
-
-
--- newtype (f :.: g) p = Comp1 (f (g p))
-
--- depth1 * depth2
--- depthx
--- depthy
-
--- x to xy depth2 times
--- y to xy depth1 times
-
 -- traverse with equality until one xy is reached
 --   that one becomes x
 --   current depth is depthx
@@ -227,15 +126,4 @@ type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
 -- Also, if 1) we suppose that the majorities of equalities will be false, and 2) that
 -- this will be replaced by unsafeCoerce after the type-checker finishes, there should be
 -- little issue with the additional overhead.
-
--- sym       :: (  a :~:   b) ->  b :~: a
--- trans     :: (  a :~:   b) -> (b :~: c) ->   a :~:   c
--- apply     :: (f   :~: g  ) -> (a :~: b) -> f a :~: g b
--- inner     :: (f a :~: g b) ->  a :~: b
--- outer     :: (f a :~: g b) ->  f :~: g
-
--- (Int, XY)
--- (Int, (Int, XY))
--- (Int, (Int, (Int, XY)))
-
 
