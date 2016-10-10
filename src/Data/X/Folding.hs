@@ -1,29 +1,21 @@
--- {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeInType #-}
--- {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
--- {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
--- {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE TypeOperators #-}
--- {-# LANGUAGE InstanceSigs #-}
--- {-# LANGUAGE TypeFamilyDependencies #-}
-
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Data.X.Folding where
 
-import Data.X
+import Data.Kind
 import Data.Tree
 import Data.Typeable
-import Data.Kind
+import Data.X
 
 -- | Recursively unfold a type
 type family UnfoldX (a :: Type) :: Type where
@@ -34,12 +26,10 @@ type family UnfoldXL (l :: Type) (a :: Type) :: Type where
   UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| X c .: (UnfoldX a .: l)
   UnfoldXL l (X  c   ) =                                     X c .:               l
 
--- (undefined :: UnfoldX (Con Int Bool ())) :: X Con .: (X Int .: VoidX) .: (X Bool .: VoidX) .: (X () .: VoidX) .: VoidX
-
 
 -- | Recursively fold a (X type :. type list)
 -- Should have:
--- FoldX (UnfoldX a) == X a
+-- @`FoldX` (`UnfoldX` a) == `X` a@
 type family FoldX (a :: Type) :: Type where
   FoldX (X c .:  VoidX  ) =        X c
   FoldX (X c .: (a .: b)) = FoldX (X c .$ FoldX a .: b)

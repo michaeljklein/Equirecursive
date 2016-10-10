@@ -49,16 +49,16 @@ instance Show VoidX where
 
 
 infixr 1 .:
--- | `X`-level `:`
+-- | `X`-level `(:)`
 data (.:) (a :: *) (b :: *) = (.:) a b
 
 infixr 2 .$
--- | `X`-level `$`
+-- | `X`-level `($)`
 type family (.$) (a :: *) (b :: *) :: * where
   (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
 
 infixr 0 .||
--- | `X`-level `||`
+-- | `X`-level `(||)`
 type family (.||) (a :: *) (b :: *) :: * where
   (.||) (X VoidX) b = b
   (.||)  a        b = a
