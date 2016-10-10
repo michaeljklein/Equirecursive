@@ -14,6 +14,7 @@
 -- {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
@@ -21,16 +22,20 @@ module Data.Recurse.Equality where
 
 import Data.Type.Equality
 import Data.Kind
-import GHC.Generics
+import GHC.Generics ()
 import Data.Recurse
 import Data.Recurse.Recursing
 import Data.Lifted
 import Data.X
 import Unsafe.Coerce
 import Data.Proxy
+import Data.Tree
 
+import Data.Typeable
 
 -- TODO: Make Recurse a newtype to make casting safe!
+-- Note: Use these to avoid template haskell for Rec/Dec
+
 
 -----------------------------------------------------------------------------------
 
@@ -50,6 +55,156 @@ instance (Req a a b b 'Z ~ 'False) => RecurseEq a b 'False where
 -- | Safely cast one recursive datatype to another
 rcast :: (Req a a b b 'Z ~ 'True) => RecurseL a -> RecurseL b
 rcast = unsafeCoerce
+
+
+
+
+-- | `X`-level `[]`. Could handle being renamed.
+data VoidX
+
+-- | Stub instance
+instance Show VoidX where
+  show _ = "VoidX"
+
+
+infixr 1 .:
+-- | `X`-level `:`
+data (.:) (a :: *) (b :: *) = (.:) a b
+
+infixr 2 .$
+-- | `X`-level `$`
+type family (.$) (a :: *) (b :: *) :: * where
+  (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
+
+infixr 0 .||
+-- | `X`-level `||`
+type family (.||) (a :: *) (b :: *) :: * where
+  (.||) (X VoidX) b = b
+  (.||)  a        b = a
+
+-- | Recursively unfold a type
+type family UnfoldX (a :: *) :: * where
+  UnfoldX a = UnfoldXL VoidX (X a)
+
+-- | Recursively unfold a type with given argument list
+type family UnfoldXL (l :: *) (a :: *) :: * where
+  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| X c .: (UnfoldX a .: l)
+  UnfoldXL l (X  c   ) =                                     X c .:               l
+
+-- | Recursively fold a (X type :. type list)
+-- Should have:
+-- FoldX (UnFoldX a) == X a
+type family FoldX (a :: *) :: * where
+  FoldX (X c .:  VoidX  ) =        X c
+  FoldX (X c .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
+
+-- | Show an unfolded type in tree form
+showx :: ToTree a => a -> String
+showx = drawTree . toTree
+
+-- | Print a type unfolded and in tree form
+printu :: ToTree (UnfoldX a) => a -> IO ()
+printu = putStrLn . showx . (undefined :: a -> UnfoldX a)
+
+-- | See `toTree`
+class ToTree (a :: *) where
+  -- | Convert an unfolded type into a `Tree` of `String`s
+  toTree   :: a -> Tree String
+
+-- | See `ToTree`
+class ToForest (a :: *) where
+  -- | See `toTree`
+  toForest :: a -> Forest String
+
+instance Typeable (X a) => ToTree (X a) where
+  toTree x = Node (drop 2 . show . typeOf $ x) []
+
+instance (Typeable (X a), ToForest bs) => ToTree (X a .: bs) where
+  toTree x = Node (label x) (toForest (rm x))
+    where
+      hd :: (X a .: bs) -> X a
+      hd _ = undefined
+      label = drop 2 . show . typeOf . hd
+      rm :: (X a .: bs) -> bs
+      rm _ = undefined
+
+instance (ToTree a, ToForest as) => ToForest (a .: as) where
+  toForest x = toTree (y x) : toForest (ys x)
+    where
+      y :: (a .: as) -> a
+      y _ = undefined
+      ys :: (a .: as) -> as
+      ys _ = undefined
+
+instance ToForest VoidX where
+  toForest _ = []
+
+
+-- `a` should never have reached VoidX
+  -- ( R
+  -- , X (,) .: ((X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX))
+  -- , VoidX
+  -- , X (,) .: ((X Int .: VoidX) .: ((X (,) .: ((X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX))) .: VoidX))
+  -- , (X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX)
+  -- , X ('S ('S ('S ('S 'Z)))))
+
+-- | Convenient alias
+type family RQ (a :: *) (b :: *) :: * where
+  RQ a b = X( Req2 (UnfoldX a) (UnfoldX a) (UnfoldX b) (UnfoldX b) 'Z )
+
+
+data (:&:) (a :: *) (b :: *)
+data R
+data D
+type family Rc (a :: *) where
+  Rc (R, ar, (X XY   ), br, (X XY   ), X d) = X 'True
+  Rc (R, ar, (X XY   ), br, (b      ), X d) = (D, ar, ar, br, b, X     d)
+  Rc (R, ar, (a      ), br, (X XY   ), X d) = (D, br, br, ar, a, X     d)
+  Rc (R, ar, (a .: as), br, (b .: bs), X d) = (R, ar, a , br, b, X ('S d)) :&: (R, ar, as, br, bs, X ('S d))
+  Rc (R, ar, (VoidX  ), br, (b      ), X d) = X (VoidX == b)
+  Rc (R, ar, (a      ), br, (b      ), X d) = X (a     == b)
+
+  Rc (D, ar, (X XY   ), br, (X XY   ), X ('S d)) = X 'True
+  Rc (D, ar, (X XY   ), br, (b      ), X ('S d)) = (D, ar, ar, br, b , X ('S d))
+  Rc (D, ar, (a      ), br, (X XY   ), X ('S d)) = (D, ar, a , br, br, X (   d))
+  Rc (D, ar, (a .: as), br, (b .: bs), X ('S d)) = (D, ar, a , br, b , X ('S d)) :&: (D, ar, as, br, bs, X ('S d))
+  Rc (D, ar, (VoidX  ), br, (b      ), X ('S d)) = X (VoidX == b)
+  Rc (D, ar, (a      ), br, (b      ), X ('S d)) = X (a     == b)
+  Rc (D, ar, (a      ), br, (b      ), X (  'Z)) = X 'False
+  Rc (a :&: b) = Rc a :&: Rc b
+  Rc a = a
+
+
+
+
+
+type family Req2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+  Req2 ar (X XY   ) br (X XY   ) d = 'True
+  Req2 ar (X XY   ) br (b      ) d = Deq2 ar ar br b d
+  Req2 ar (a      ) br (X XY   ) d = Deq2 br br ar a d
+  Req2 ar (a .: as) br (b .: bs) d = Req2 ar a br b ('S d) :&& Req2 ar as br bs ('S d)
+  Req2 ar (VoidX  ) br (b      ) d = VoidX == b
+  Req2 ar (a      ) br (b      ) d = a     == b
+
+type family Deq2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+  Deq2 ar (X XY   ) br (X XY   ) ('S d) = 'True
+  Deq2 ar (X XY   ) br (b      ) ('S d) = Deq2 ar ar br b  ('S d)
+  Deq2 ar (a      ) br (X XY   ) ('S d) = Deq2 ar a  br br     d
+  Deq2 ar (a .: as) br (b .: bs) ('S d) = Deq2 ar a  br b  ('S d) :&& Deq2 ar as br bs ('S d)
+  Deq2 ar (VoidX  ) br (b      ) ('S d) = VoidX == b
+  Deq2 ar (a      ) br (b      ) ('S d) = a     == b
+  Deq2 ar (a      ) br (b      )    'Z  = 'False
+
+-- undefined :: UnfoldX (Recurse 'Locked (Either Int (IO Bool, XY)))
+--   :: X (Recurse 'Locked)
+--      .: ((X Either
+--           .: ((X Int .: VoidX)
+--               .: ((X (,)
+--                    .: ((X IO .: ((X Bool .: VoidX) .: VoidX))
+--                        .: ((X (X Y) .: VoidX) .: VoidX)))
+--                   .: VoidX)))
+--          .: VoidX)
+
 
 -----------------------------------------------------------------------------------
 

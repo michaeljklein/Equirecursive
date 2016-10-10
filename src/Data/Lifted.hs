@@ -19,18 +19,15 @@
 
 module Data.Lifted where
 
-
+-- | Type-level natural numbers. Nothing special here.
 data Nat = Z | S Nat deriving (Eq, Ord, Show)
 
-
--- NOTE!! The current instance type doesn't account for the possibility that `b` is X (X :: k -> *)!
--- This needs to be added so that it won't fail if the second is more shallow than the first.
-
-
+-- | Type-level `$`
 infixr 0 :$
 type family (:$) (f :: ka -> kb) (x :: ka) where
   f :$ x = f x
 
+-- | Type-level `&&`
 infixr 3 :&&
 type family (:&&) (a :: Bool) (b :: Bool) where
   'True :&& 'True = 'True

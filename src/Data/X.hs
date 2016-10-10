@@ -29,18 +29,14 @@ import Data.Kind
 -- Note: Need to make 100% sure that none of these operations can kill `XX`. Or at least accidentally.
 newtype X (a :: k) = X { getX :: Any }
 
-
 -- | Convenience alias
 type XX k = X (X :: k -> *)
-
 
 -- | Synonym for ease of typing
 type Y = (X :: * -> *)
 
 -- | Synonym for ease of typing
 type XY = X Y
-
-
 
 -- | An empty value
 xX :: X (a :: k -> *)
