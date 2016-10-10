@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -37,6 +39,30 @@ type Y = (X :: * -> *)
 
 -- | Synonym for ease of typing
 type XY = X Y
+
+-- | `X`-level `[]`. Could handle being renamed.
+data VoidX
+
+-- | Stub instance
+instance Show VoidX where
+  show _ = "VoidX"
+
+
+infixr 1 .:
+-- | `X`-level `:`
+data (.:) (a :: *) (b :: *) = (.:) a b
+
+infixr 2 .$
+-- | `X`-level `$`
+type family (.$) (a :: *) (b :: *) :: * where
+  (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
+
+infixr 0 .||
+-- | `X`-level `||`
+type family (.||) (a :: *) (b :: *) :: * where
+  (.||) (X VoidX) b = b
+  (.||)  a        b = a
+
 
 -- | An empty value
 xX :: X (a :: k -> *)

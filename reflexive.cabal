@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.X
                      , Data.X.Map
+                     , Data.X.Folding
                      , Data.X.Map.TH
                      , Data.Recurse
                      , Data.Recurse.Equality

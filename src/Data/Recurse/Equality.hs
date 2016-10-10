@@ -21,18 +21,17 @@
 module Data.Recurse.Equality where
 
 import Data.Type.Equality
-import Data.Kind
+import Data.Kind (Type)
 import GHC.Generics ()
 import Data.Recurse
-import Data.Recurse.Recursing
+import Data.Recurse.Recursing ()
 import Data.Lifted
 import Data.X
 import Unsafe.Coerce
 import Data.Proxy
-import Data.Tree
+import Data.X.Folding
 
-import Data.Typeable
-
+import GHC.TypeLits hiding (Nat)
 -- TODO: Make Recurse a newtype to make casting safe!
 -- Note: Use these to avoid template haskell for Rec/Dec
 
@@ -40,7 +39,7 @@ import Data.Typeable
 -----------------------------------------------------------------------------------
 
 -- | Likely unfinished, but this is will be the interface to the result of this module
-class (Req a a b b 'Z ~ eq) => RecurseEq (a :: *) (b :: *) (eq :: Bool) where
+class (Req a a b b 'Z ~ eq) => RecurseEq (a :: Type) (b :: Type) (eq :: Bool) where
   req   :: RecurseL a -> RecurseL b -> Maybe (RecurseL a :~: RecurseL b)
   reqP  :: RecurseL a -> Proxy    b -> Maybe (RecurseL a :~: RecurseL b)
 
@@ -59,126 +58,121 @@ rcast = unsafeCoerce
 
 
 
--- | `X`-level `[]`. Could handle being renamed.
-data VoidX
-
--- | Stub instance
-instance Show VoidX where
-  show _ = "VoidX"
-
-
-infixr 1 .:
--- | `X`-level `:`
-data (.:) (a :: *) (b :: *) = (.:) a b
-
-infixr 2 .$
--- | `X`-level `$`
-type family (.$) (a :: *) (b :: *) :: * where
-  (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
-
-infixr 0 .||
--- | `X`-level `||`
-type family (.||) (a :: *) (b :: *) :: * where
-  (.||) (X VoidX) b = b
-  (.||)  a        b = a
-
--- | Recursively unfold a type
-type family UnfoldX (a :: *) :: * where
-  UnfoldX a = UnfoldXL VoidX (X a)
-
--- | Recursively unfold a type with given argument list
-type family UnfoldXL (l :: *) (a :: *) :: * where
-  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| X c .: (UnfoldX a .: l)
-  UnfoldXL l (X  c   ) =                                     X c .:               l
-
--- | Recursively fold a (X type :. type list)
--- Should have:
--- FoldX (UnFoldX a) == X a
-type family FoldX (a :: *) :: * where
-  FoldX (X c .:  VoidX  ) =        X c
-  FoldX (X c .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
-
--- | Show an unfolded type in tree form
-showx :: ToTree a => a -> String
-showx = drawTree . toTree
-
--- | Print a type unfolded and in tree form
-printu :: ToTree (UnfoldX a) => a -> IO ()
-printu = putStrLn . showx . (undefined :: a -> UnfoldX a)
-
--- | See `toTree`
-class ToTree (a :: *) where
-  -- | Convert an unfolded type into a `Tree` of `String`s
-  toTree   :: a -> Tree String
-
--- | See `ToTree`
-class ToForest (a :: *) where
-  -- | See `toTree`
-  toForest :: a -> Forest String
-
-instance Typeable (X a) => ToTree (X a) where
-  toTree x = Node (drop 2 . show . typeOf $ x) []
-
-instance (Typeable (X a), ToForest bs) => ToTree (X a .: bs) where
-  toTree x = Node (label x) (toForest (rm x))
-    where
-      hd :: (X a .: bs) -> X a
-      hd _ = undefined
-      label = drop 2 . show . typeOf . hd
-      rm :: (X a .: bs) -> bs
-      rm _ = undefined
-
-instance (ToTree a, ToForest as) => ToForest (a .: as) where
-  toForest x = toTree (y x) : toForest (ys x)
-    where
-      y :: (a .: as) -> a
-      y _ = undefined
-      ys :: (a .: as) -> as
-      ys _ = undefined
-
-instance ToForest VoidX where
-  toForest _ = []
-
-
--- `a` should never have reached VoidX
-  -- ( R
-  -- , X (,) .: ((X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX))
-  -- , VoidX
-  -- , X (,) .: ((X Int .: VoidX) .: ((X (,) .: ((X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX))) .: VoidX))
-  -- , (X Int .: VoidX) .: ((X (X Y) .: VoidX) .: VoidX)
-  -- , X ('S ('S ('S ('S 'Z)))))
-
 -- | Convenient alias
-type family RQ (a :: *) (b :: *) :: * where
+type family RQ (a :: Type) (b :: Type) :: Type where
   RQ a b = X( Req2 (UnfoldX a) (UnfoldX a) (UnfoldX b) (UnfoldX b) 'Z )
 
 
-data (:&:) (a :: *) (b :: *)
-data R
-data D
-type family Rc (a :: *) where
-  Rc (R, ar, (X XY   ), br, (X XY   ), X d) = X 'True
-  Rc (R, ar, (X XY   ), br, (b      ), X d) = (D, ar, ar, br, b, X     d)
-  Rc (R, ar, (a      ), br, (X XY   ), X d) = (D, br, br, ar, a, X     d)
-  Rc (R, ar, (a .: as), br, (b .: bs), X d) = (R, ar, a , br, b, X ('S d)) :&: (R, ar, as, br, bs, X ('S d))
-  Rc (R, ar, (VoidX  ), br, (b      ), X d) = X (VoidX == b)
-  Rc (R, ar, (a      ), br, (b      ), X d) = X (a     == b)
+type family Impossible (a :: k0) :: k1 where
+  Impossible XY = TypeError ('Text "X XY is always follwed immediately by VoidX")
 
-  Rc (D, ar, (X XY   ), br, (X XY   ), X ('S d)) = X 'True
-  Rc (D, ar, (X XY   ), br, (b      ), X ('S d)) = (D, ar, ar, br, b , X ('S d))
-  Rc (D, ar, (a      ), br, (X XY   ), X ('S d)) = (D, ar, a , br, br, X (   d))
-  Rc (D, ar, (a .: as), br, (b .: bs), X ('S d)) = (D, ar, a , br, b , X ('S d)) :&: (D, ar, as, br, bs, X ('S d))
-  Rc (D, ar, (VoidX  ), br, (b      ), X ('S d)) = X (VoidX == b)
-  Rc (D, ar, (a      ), br, (b      ), X ('S d)) = X (a     == b)
-  Rc (D, ar, (a      ), br, (b      ), X (  'Z)) = X 'False
-  Rc (a :&: b) = Rc a :&: Rc b
-  Rc a = a
+type family RE (a :: Type) (b :: Type) :: Type where
+  RE a b = X( Rec3 (UnfoldX a) (UnfoldX a) (UnfoldX b) (UnfoldX b) 'Z )
+
+type family Rec3 (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool where
+  Rec3 ar (X XY .: VoidX) br (X XY .: VoidX) d = 'True
+  Rec3 ar (X XY .: VoidX) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (X XY .: VoidX) br (X b  .: VoidX) d = Dec3 ar ar br (X b .: VoidX) d
+  Rec3 ar (X XY .: VoidX) br (X b  .: bs   ) d = Dec3 ar ar br (X b .: bs   ) d
+  Rec3 ar (X XY .: VoidX) br (  b  .: VoidX) d = Dec3 ar ar br (  b .: VoidX) d
+  Rec3 ar (X XY .: VoidX) br (  b  .: bs   ) d = Dec3 ar ar br (  b .: bs   ) d
+  Rec3 ar (X XY .: as   ) br (X XY .: VoidX) d = Impossible XY
+  Rec3 ar (X XY .: as   ) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (X XY .: as   ) br (X b  .: VoidX) d = Impossible XY
+  Rec3 ar (X XY .: as   ) br (X b  .: bs   ) d = Impossible XY
+  Rec3 ar (X XY .: as   ) br (  b  .: VoidX) d = Impossible XY
+  Rec3 ar (X XY .: as   ) br (  b  .: bs   ) d = Impossible XY
+  Rec3 ar (X a  .: VoidX) br (X XY .: VoidX) d = Dec3 br br ar (X a .: VoidX) d
+  Rec3 ar (X a  .: VoidX) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (X a  .: VoidX) br (X b  .: VoidX) d = X a == X b
+  Rec3 ar (X a  .: VoidX) br (X b  .: bs   ) d = 'False
+  Rec3 ar (X a  .: VoidX) br (  b  .: VoidX) d = 'False
+  Rec3 ar (X a  .: VoidX) br (  b  .: bs   ) d = 'False
+  Rec3 ar (X a  .: as   ) br (X XY .: VoidX) d = Dec3 br br ar (X a .: as) d
+  Rec3 ar (X a  .: as   ) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (X a  .: as   ) br (X b  .: VoidX) d = 'False
+  Rec3 ar (X a  .: as   ) br (X b  .: bs   ) d = (X a == X b) :&& Rec3 ar as br bs d
+  Rec3 ar (X a  .: as   ) br (  b  .: VoidX) d = 'False
+  Rec3 ar (X a  .: as   ) br (  b  .: bs   ) d = 'False
+  Rec3 ar (  a  .: VoidX) br (X XY .: VoidX) d = Dec3 br br ar (a .: VoidX) d -- ?
+  Rec3 ar (  a  .: VoidX) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (  a  .: VoidX) br (X b  .: VoidX) d = 'False
+  Rec3 ar (  a  .: VoidX) br (X b  .: bs   ) d = 'False
+  Rec3 ar (  a  .: VoidX) br (  b  .: VoidX) d = Rec3 ar a br b ('S d)
+  Rec3 ar (  a  .: VoidX) br (  b  .: bs   ) d = 'False
+  Rec3 ar (  a  .: as   ) br (X XY .: VoidX) d = Dec3 br br ar (a .: as) d
+  Rec3 ar (  a  .: as   ) br (X XY .: bs   ) d = Impossible XY
+  Rec3 ar (  a  .: as   ) br (X b  .: VoidX) d = 'False
+  Rec3 ar (  a  .: as   ) br (X b  .: bs   ) d = 'False
+  Rec3 ar (  a  .: as   ) br (  b  .: VoidX) d = 'False
+  Rec3 ar (  a  .: as   ) br (  b  .: bs   ) d = Rec3 ar a br b ('S d) :&& Rec3 ar as br bs d
+
+type family Dec3 (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool where
+  Dec3 ar (X XY .: VoidX) br (X XY .: VoidX) ('S d) = 'True
+  Dec3 ar (X XY .: VoidX) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X XY .: VoidX) br (X b  .: VoidX) ('S d) = Dec3 ar ar br (X b .: VoidX) ('S d)
+  Dec3 ar (X XY .: VoidX) br (X b  .: bs   ) ('S d) = Dec3 ar ar br (X b .: bs   ) ('S d)
+  Dec3 ar (X XY .: VoidX) br (  b  .: VoidX) ('S d) = Dec3 ar ar br (  b .: VoidX) ('S d)
+  Dec3 ar (X XY .: VoidX) br (  b  .: bs   ) ('S d) = Dec3 ar ar br (  b .: bs   ) ('S d)
+  Dec3 ar (X XY .: as   ) br (X XY .: VoidX) ('S d) = Impossible XY
+  Dec3 ar (X XY .: as   ) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X XY .: as   ) br (X b  .: VoidX) ('S d) = Impossible XY
+  Dec3 ar (X XY .: as   ) br (X b  .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X XY .: as   ) br (  b  .: VoidX) ('S d) = Impossible XY
+  Dec3 ar (X XY .: as   ) br (  b  .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X a  .: VoidX) br (X XY .: VoidX) ('S d) = Dec3 ar (X a .: VoidX) br br d
+  Dec3 ar (X a  .: VoidX) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X a  .: VoidX) br (X b  .: VoidX) ('S d) = X a == X b
+  Dec3 ar (X a  .: VoidX) br (X b  .: bs   ) ('S d) = 'False
+  Dec3 ar (X a  .: VoidX) br (  b  .: VoidX) ('S d) = 'False
+  Dec3 ar (X a  .: VoidX) br (  b  .: bs   ) ('S d) = 'False
+  Dec3 ar (X a  .: as   ) br (X XY .: VoidX) ('S d) = Dec3 ar (X a .: as   ) br br d
+  Dec3 ar (X a  .: as   ) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (X a  .: as   ) br (X b  .: VoidX) ('S d) = 'False
+  Dec3 ar (X a  .: as   ) br (X b  .: bs   ) ('S d) = (X a == X b) :&& Dec3 ar as br bs ('S d)
+  Dec3 ar (X a  .: as   ) br (  b  .: VoidX) ('S d) = 'False
+  Dec3 ar (X a  .: as   ) br (  b  .: bs   ) ('S d) = 'False
+  Dec3 ar (  a  .: VoidX) br (X XY .: VoidX) ('S d) = Dec3 ar (a .: VoidX) br br d
+  Dec3 ar (  a  .: VoidX) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (  a  .: VoidX) br (X b  .: VoidX) ('S d) = 'False
+  Dec3 ar (  a  .: VoidX) br (X b  .: bs   ) ('S d) = 'False
+  Dec3 ar (  a  .: VoidX) br (  b  .: VoidX) ('S d) = Dec3 ar a br b ('S d)
+  Dec3 ar (  a  .: VoidX) br (  b  .: bs   ) ('S d) = 'False
+  Dec3 ar (  a  .: as   ) br (X XY .: VoidX) ('S d) = Dec3 ar (a .: as) br br d
+  Dec3 ar (  a  .: as   ) br (X XY .: bs   ) ('S d) = Impossible XY
+  Dec3 ar (  a  .: as   ) br (X b  .: VoidX) ('S d) = 'False
+  Dec3 ar (  a  .: as   ) br (X b  .: bs   ) ('S d) = 'False
+  Dec3 ar (  a  .: as   ) br (  b  .: VoidX) ('S d) = 'False
+  Dec3 ar (  a  .: as   ) br (  b  .: bs   ) ('S d) = Dec3 ar a br b ('S d) :&& Dec3 ar as br bs ('S d)
+
+
+
+-- data (:&:) (a :: Type) (b :: Type)
+-- data R
+-- data D
+-- type family Rc (a :: Type) where
+--   Rc (R, ar, (X XY   ), br, (X XY   ), X d) = X 'True
+--   Rc (R, ar, (X XY   ), br, (b      ), X d) = (D, ar, ar, br, b, X     d)
+--   Rc (R, ar, (a      ), br, (X XY   ), X d) = (D, br, br, ar, a, X     d)
+--   Rc (R, ar, (a .: as), br, (b .: bs), X d) = (R, ar, a , br, b, X ('S d)) :&: (R, ar, as, br, bs, X ('S d))
+--   Rc (R, ar, (VoidX  ), br, (b      ), X d) = X (VoidX == b)
+--   Rc (R, ar, (a      ), br, (b      ), X d) = X (a     == b)
+
+--   Rc (D, ar, (X XY   ), br, (X XY   ), X ('S d)) = X 'True
+--   Rc (D, ar, (X XY   ), br, (b      ), X ('S d)) = (D, ar, ar, br, b , X ('S d))
+--   Rc (D, ar, (a      ), br, (X XY   ), X ('S d)) = (D, ar, a , br, br, X (   d))
+--   Rc (D, ar, (a .: as), br, (b .: bs), X ('S d)) = (D, ar, a , br, b , X ('S d)) :&: (D, ar, as, br, bs, X ('S d))
+--   Rc (D, ar, (VoidX  ), br, (b      ), X ('S d)) = X (VoidX == b)
+--   Rc (D, ar, (a      ), br, (b      ), X ('S d)) = X (a     == b)
+--   Rc (D, ar, (a      ), br, (b      ), X (  'Z)) = X 'False
+--   Rc (a :&: b) = Rc a :&: Rc b
+--   Rc a = a
 
 
 
 
 
-type family Req2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+type family Req2 (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool where
   Req2 ar (X XY   ) br (X XY   ) d = 'True
   Req2 ar (X XY   ) br (b      ) d = Deq2 ar ar br b d
   Req2 ar (a      ) br (X XY   ) d = Deq2 br br ar a d
@@ -186,7 +180,7 @@ type family Req2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
   Req2 ar (VoidX  ) br (b      ) d = VoidX == b
   Req2 ar (a      ) br (b      ) d = a     == b
 
-type family Deq2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
+type family Deq2 (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool where
   Deq2 ar (X XY   ) br (X XY   ) ('S d) = 'True
   Deq2 ar (X XY   ) br (b      ) ('S d) = Deq2 ar ar br b  ('S d)
   Deq2 ar (a      ) br (X XY   ) ('S d) = Deq2 ar a  br br     d
@@ -210,23 +204,23 @@ type family Deq2 (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool where
 
 -- | Recurse, checking equality until `XY` is reached.
 -- Then, pass the lower depth to the second stage.
-type family Req (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool
+type family Req (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool
 
-type family ReqExpand (ar :: *) (br :: *) (b :: *) (d :: Nat) where
+type family ReqExpand (ar :: Type) (br :: Type) (b :: Type) (d :: Nat) where
   ReqExpand ar br XY d = 'True -- Is this really always True? Yup, if a == b, then True.
   ReqExpand ar br b  d = Deq ar ar br b d
 type instance Req ar XY br b d = ReqExpand br b XY d
 
 -----------------------------------------------------------------------------------
 
-type family Deq (ar :: *) (a :: *) (br :: *) (b :: *) (d :: Nat) :: Bool
+type family Deq (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool
 
-type instance Deq ar a br b 'Z = a == b
+-- type instance Deq ar a br b 'Z = a == b
 
-type family DeqExpand (ar :: *) (br :: *) (b :: *) (d :: Nat) where
-  DeqExpand ar br XY d = 'True
-  DeqExpand ar br b  d = Deq ar ar br b d
-type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
+-- type family DeqExpand (ar :: Type) (br :: Type) (b :: Type) (d :: Nat) where
+--   DeqExpand ar br XY d = 'True
+--   DeqExpand ar br b  d = Deq ar ar br b d
+-- type instance Deq ar XY br b ('S d) = DeqExpand ar br b d
 
 
 -- Req ar (Int, XY) br (Int, (Int, XY)) Z
