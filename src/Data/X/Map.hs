@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 {-# LANGUAGE UndecidableInstances #-}
-
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Data.X.Map where
 
@@ -44,6 +44,7 @@ import Data.Version (Version)
 import Data.Void
 import Data.Word
 import Data.X
+import Data.X.Folding
 import Foreign.C.Error (Errno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, WordPtr, IntPtr)
@@ -71,10 +72,83 @@ import Data.Profunctor
 import Control.Lens.Iso
 import Control.Lens
 
+import Control.Comonad
 import Data.X.Map.TH (XMaps(..), baseInstances', functorInstances', bifunctorInstances', constrainedFunctorInstances', (~>))
-import Data.Recurse (Locking(..), Recurse(..), lock, unlock, RecurseU, RecurseL)
+import Data.Recurse (Locking(..), Recurse, lock, unlock)
 import Data.Type.Equality
 import Unsafe.Coerce
+
+type family Not (a :: Bool) :: Bool where
+  Not 'True  = 'False
+  Not 'False = 'True
+
+type family (:||) (a :: Bool) (b :: Bool) :: Bool where
+  'False :|| 'False = 'False
+  a      :|| b      = 'True
+
+-- | Check whether @b@ is constructed from @a@ (on the obvious type level).
+-- E.g.
+-- @
+-- newtype A a = A { getA :: a   }
+-- newtype B   = B { getB :: Int }
+-- `Elem` `Int` (A Int) ~ '`True`
+-- `Elem` `Int`  B      ~ '`False`
+-- @
+type family Elem  (a :: k0) (b :: k1) :: Bool where
+  Elem a b = ElemX (UnfoldX a) (UnfoldX b)
+
+-- | `X`-level `Elem`
+type family ElemX (a :: * ) (b :: * ) :: Bool where
+  ElemX a (  a         ) = 'True
+  ElemX a (X b .: VoidX) = 'False
+  ElemX a (X b .: etc  ) =                ElemX a etc
+  ElemX a (  b .: VoidX) =  ElemX a b
+  ElemX a (  b .: etc  ) =  ElemX a b :|| ElemX a etc
+  ElemX a (  b         ) = 'False
+
+
+-- | Replace all instances of @from@ with @to@ in @a@.
+-- See `Elem` for when @from@ is recognized in @a@.
+type family MapT  (from :: k0) (to :: k0) (a :: k) :: k where
+  MapT from to a = UnX (FoldX (MapTX (UnfoldX from) (UnfoldX to) (UnfoldX a)))
+
+-- | `X`-level `MapT`
+type family MapTX (from :: * ) (to :: * ) (a :: k) :: k where
+  MapTX from to (  from      ) =                               to
+  MapTX from to (X a .: VoidX) =             X a .: VoidX
+  MapTX from to (X a .: etc  ) =             X a .: MapTX from to etc
+  MapTX from to (  a .: VoidX) = MapTX from to a .: VoidX
+  MapTX from to (  a .: etc  ) = MapTX from to a .: MapTX from to etc
+  MapTX from to (  a         ) =               a
+
+-- | Equivalent datatypes can be coerced between safely (assuming the types are not ?nominal?)
+mapTCoerce  :: Coercible from to => a -> MapT from to a
+mapTCoerce  = unsafeCoerce
+
+-- | Inverse of `mapTCoerce`
+mapTCoerce' :: Coercible from to => MapT from to a -> a
+mapTCoerce' = unsafeCoerce
+
+-- | @`MapT` from to@ is the inverse of @`MapT` to from@
+mapTInverse :: forall from to a. MapT from to (MapT to from a) :~: a
+mapTInverse = unsafeCoerce Refl
+
+-- | @`MapT` from to a `==` a@ on types that do not contain @from@.
+-- (See `Elem` for when subtypes can be recognized.)
+mapTElem :: forall from to a. (MapT from to a == a) :~: (Not (Elem from a) :|| (from == to))
+mapTElem = unsafeCoerce Refl
+
+-- | `MapT` replaces all instances of @from@ in @a@ with @to@, so the only way that
+-- @`Elem` from (`MapT` from to a) ~ 'True` is when @from `==` to@.
+mapTElem2 :: forall from to a. Elem from (MapT from to a) :~: (from == to)
+mapTElem2 = unsafeCoerce Refl
+
+-- | `MapT` is idempotent
+mapTIdempotent :: forall from to a. MapT from to (MapT from to a) :~: MapT from to a
+mapTIdempotent = unsafeCoerce Refl
+
+
+
 
 -- | Map over a data structure and expand an `XX` into some `Rec`.
 -- Alternatively, compress some `Rec` into some `XX`.
@@ -198,6 +272,23 @@ instance XMapN Int where
   type YMapC Int a l b = ()
   xmapn = const pure
   ymapn = const pure
+
+-- instance (Depth s ~ 'Z) => XMapN s where
+--   type XMapF s a l b = s
+--   type XMapC s a l b = ()
+--   type YMapF s a l b = s
+--   type YMapC s a l b = ()
+--   xmapn = const pure
+--   ymapn = const pure
+
+-- instance (Depth s ~ 'S 'Z) => XMapN s where
+--   type XMapF s a l b = XMapF (Arg1 s) a l b
+--   type XMapC s a l b = Functor (GetF1 s) +?+ XMapC (Arg1 s) a l b
+--   type YMapF s a l b = YMapF (Arg1 s) a l b
+--   type YMapC s a l b = Functor (GetF1 s) +?+ YMapC (Arg1 s) a l b
+--   xmapn = fmap xmapn
+--   ymapn = fmap ymapn
+
 
 ----------------------------------------------------------------------------------------------------------------------------------
 
@@ -335,7 +426,7 @@ biSetter f g h i = g i `f` h i
 -- instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t) where
 instance XMap (XX k) (Recurse 'Locked t) (XX k) (Recurse 'Locked t) where
   xmap = id
-  ymap _ (RecurseLocked x) = pure $ return x >- xX
+  ymap _ x = pure $ return (extract (unlock x)) >- xX
 
 
 -- | This gives us an iso between the two. This means that we can lock a type and unlock it later.

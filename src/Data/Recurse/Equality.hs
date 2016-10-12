@@ -16,6 +16,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Data.Recurse.Equality where
@@ -33,8 +34,11 @@ import Data.X.Folding
 
 import GHC.TypeLits hiding (Nat)
 
--- TODO: Make Recurse a newtype to make casting safe!
-
+-- | When can @exists n. a :~: pullN n b@ be derived?
+-- It likely requires some level of type defaulting?
+-- No, I think the lack of impredicative polymorphism makes it impossible.
+question :: forall a. a
+question = undefined
 
 -------------------------------------------------------------------------------------------
 
@@ -51,16 +55,16 @@ instance (RecEq a b ~ 'False) => RecurseEq a b 'False where
   req  _ _ = Nothing
   reqP _ _ = Nothing
 
--- | Safely cast one recursive datatype to another
-rcast :: (RecEq a b ~ 'True) => RecurseL a -> RecurseL b
-rcast = unsafeCoerce
+-- -- | Safely cast one recursive datatype to another
+-- rcast :: (RecEq a b ~ 'True) => RecurseL a -> RecurseL b
+-- rcast = unsafeCoerce
 
 -------------------------------------------------------------------------------------------
-
 
 -- | Type family case impossibility error
 type family Impossible (a :: k0) :: k1 where
   Impossible XY = TypeError ('Text "X XY is always follwed immediately by VoidX")
+
 
 -- | Convenient alias for
 -- @`Req` (`UnfoldX` a) (`UnfoldX` a) (`UnfoldX` b) (`UnfoldX` b) `Z`@

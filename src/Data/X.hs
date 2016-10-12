@@ -6,6 +6,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeInType #-}
+{-# LANGUAGE UndecidableInstances #-}
+
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module Data.X where
 
@@ -21,7 +24,15 @@ import Foreign.Ptr (castPtr)
 import Data.Bifunctor (bimap)
 import Data.Function (fix)
 import Data.Kind
+import GHC.TypeLits( ErrorMessage(..), TypeError )
 
+newtype W (a :: k) = W { getW :: ToStar a }
+type family ToStar (a :: k) :: * where
+  ToStar (a :: *) =   a
+  ToStar (a :: k) = W a
+
+-- instance Typeable (W a) => Show (W (a :: *)) where
+--   show = show . typeOf
 
 -- | `X` is a semi-magic type. As an inhabited type, it may be safely
 -- coerced to and from using `pure`/`return` and `extract`.
@@ -30,6 +41,10 @@ import Data.Kind
 --
 -- Note: Need to make 100% sure that none of these operations can kill `XX`. Or at least accidentally.
 newtype X (a :: k) = X { getX :: Any }
+
+type family UnX (a :: *) :: k where
+  UnX (X a) =                                                  a
+  UnX    a  = TypeError ('Text "UnX called on " :<>: 'ShowType a :<>: 'Text ", which is not of the form 'X _'.")
 
 -- | Convenience alias
 type XX k = X (X :: k -> *)

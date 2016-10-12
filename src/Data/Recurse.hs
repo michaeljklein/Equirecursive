@@ -8,11 +8,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 
-module Data.Recurse (Rec (..), Recurse(..), Locking(..), RecurseL, RecurseU, unlock, lock) where
+module Data.Recurse (Recurse(..), Locking(..), RecurseL, RecurseU, unlock, lock) where
 
 import Data.Kind
 import Data.Type.Equality
 import Control.Comonad
+import Data.X
+import Unsafe.Coerce
 
 -- import Data.X.Map (XMap(..))
 
@@ -22,7 +24,7 @@ import Control.Comonad
 -- @
 -- `Rec` (c (`XX` k)) -> c (`Rec` (c (`XX` k)))
 -- @
-data Rec (a :: *) = Rec { getRec :: a }
+-- data Rec (a :: *) = Rec { getRec :: a }
 
 data Locking = Unlocked | Locked deriving (Eq, Ord, Show)
 
@@ -40,41 +42,58 @@ type instance a == b = EqLocking a b
 -- Also, do no export anything that makes a `Locked` `Recurse`.
 -- This will allow one to use `Recurse` in `Recursing`, but not
 -- within the final equirecursive function.
-data Recurse (l :: Locking) (a :: *) where
-  RecurseLocked   :: a -> Recurse 'Locked   a
-  RecurseUnlocked :: a -> Recurse 'Unlocked a
+-- data Recurse (l :: Locking) (a :: *) where
+--   RecurseLocked   :: a -> Recurse 'Locked   a
+--   RecurseUnlocked :: a -> Recurse 'Unlocked a
 
+-- | Do not export constructors or destructors
+newtype Recurse (l :: Locking) (a :: *) = Recurse { getRecurse :: a }
+
+-- | Convenience alias
 type RecurseL a = Recurse 'Locked   a
+
+-- | Convenience alias
 type RecurseU a = Recurse 'Unlocked a
 
+-- | Lock a `RecurseU`
 lock :: RecurseU a -> RecurseL a
-lock (RecurseUnlocked x) = RecurseLocked x
+lock (Recurse x) = Recurse x
 
+lockA :: forall a b. (a -> b) -> (RecurseU a -> XY)
+lockA _ (Recurse x) = X (unsafeCoerce x)
+
+
+-- | Do not export!!!
 unlock :: RecurseL a -> RecurseU a
-unlock (RecurseLocked x) = RecurseUnlocked x
+unlock (Recurse x) = Recurse x
 
+-- | `Recurse` `Unlocked` is trivially a `Functor`
 instance Functor (Recurse 'Unlocked) where
-  fmap f (RecurseUnlocked x) = RecurseUnlocked (f x)
+  fmap f (Recurse x) = Recurse (f x)
 
+-- | `Recurse` `Unlocked` is trivially an `Applicative`
 instance Applicative (Recurse 'Unlocked) where
-  pure = RecurseUnlocked
-  RecurseUnlocked f <*> RecurseUnlocked x = RecurseUnlocked (f x)
+  pure = Recurse
+  Recurse f <*> Recurse x = Recurse (f x)
 
+-- | `Recurse` `Unlocked` is trivially a `Monad`
 instance Monad (Recurse 'Unlocked) where
   return = pure
-  RecurseUnlocked x >>= f = f x
+  Recurse x >>= f = f x
 
+-- | `Recurse` `Unlocked` is trivially a `Comonad`
 instance Comonad (Recurse 'Unlocked) where
-  extract (RecurseUnlocked x) = x
-  duplicate = RecurseUnlocked
-  extend f = RecurseUnlocked . f
+  extract (Recurse x) = x
+  duplicate = Recurse
+  extend f = Recurse . f
+
 
 -- | This may be unsafe and should be checked.
 -- (It's possible that a recursion endpoint could be killed..)
 -- Possible solution is to parametrize, where Rec = Rec Locked, and
 -- @`Functor` (`Rec` Unlocked)@
-instance Functor Rec where
-  fmap f (Rec x) = Rec (f x)
+-- instance Functor Rec where
+--   fmap f (Rec x) = Rec (f x)
 
 
 
