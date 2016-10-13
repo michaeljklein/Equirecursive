@@ -1,22 +1,6 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeInType #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FunctionalDependencies #-}
+-- {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeInType #-}
 
 module Data.Recurse.Recursing where
 
@@ -24,7 +8,7 @@ import Data.Recurse
 import Prelude hiding (id, (.))
 import Data.Kind
 import Data.X
-import Data.X.Map hiding (XMap)
+import Data.X.Map
 import Unsafe.Coerce
 import Control.Category (Category(..))
 import Data.Function (fix)
@@ -33,6 +17,8 @@ import Data.Void
 import Control.Comonad
 import Data.Type.Equality
 import Data.Proxy
+import Data.Locking
+
 
 -- TODO: Need a get type family that, given a constructor @c@,
 -- either gets the unique @c a@ such that @c a `Elem` input@
@@ -45,18 +31,12 @@ import Data.Proxy
 --
 -- Remember, also need to make a few fun generic things such as
 -- - stateful infinite types
--- - convert a function into one that allows reporting its arguments
 -- - MonoFunctor, etc, for infinite types (such as RecurseL (Int, XY))
--- - an infinite-type based printf
 -- - several infinite-type combinators
 -- - Isos, Prisms
--- - generic infinite-type functions
--- - an arrowish or even category-level version of rec
--- - a $ function for RecurseL (a -> c XY), which is much more limited than an automatic push
 -- - Comonad instances for infinite types
 -- - Infinite type transformers (Either a XY, anyone?)
 -- - A nice family of infinite-type newtypes
--- - Infinite-type lists, binary trees, existential types, and graphs, at least
 -- - lenses for various infinite types. possibly even a generic destructor?
 -- - I think there was an infinite-type solution to something with Conduits, like nested conduit tricks or something
 --
@@ -81,36 +61,36 @@ lockA _ x = X (unsafeCoerce (extract x))
 unlockV :: XY -> RecurseV
 unlockV (X x) = lock . return . unsafeCoerce $ x
 
--- | This is where the magic happens.
-class ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
-      , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
-      , XMapN (YMapF s Y 'Unlocked t)
-      , XMapN s
-      , YMapC s Y 'Unlocked t
-      ) => Recursing t s where
-        -- | Takes a function of form: @c `RecurseV` -> c2 (`RecurseU` (c `RecurseV`))@
-        rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
-        rec = (lock . return) . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
+-- -- | This is where the magic happens.
+-- class ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
+--       , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
+--       , XMapN (YMapF s Y 'Unlocked t)
+--       , XMapN s
+--       , YMapC s Y 'Unlocked t
+--       ) => Recursing t s where
+--         -- | Takes a function of form: @c `RecurseV` -> c2 (`RecurseU` (c `RecurseV`))@
+--         rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
+--         rec = (lock . return) . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
 
--- | This instance is simply to allow abbreviation, no other instances should exist (they'd overlap anyway)
-instance ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
-         , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
-         , XMapN (YMapF s Y 'Unlocked t)
-         , XMapN s
-         , YMapC s Y 'Unlocked t
-         ) => Recursing t s where
-        -- rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
-        -- rec = RecurseLocked . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
+-- -- | This instance is simply to allow abbreviation, no other instances should exist (they'd overlap anyway)
+-- instance ( XMapC (YMapF s Y 'Unlocked t) Y 'Locked Void
+--          , XMapF (YMapF s Y 'Unlocked t) Y 'Locked Void ~ t
+--          , XMapN (YMapF s Y 'Unlocked t)
+--          , XMapN s
+--          , YMapC s Y 'Unlocked t
+--          ) => Recursing t s where
+--         -- rec :: (t -> s) -> RecurseL (YMapF s Y 'Unlocked t)
+--         -- rec = RecurseLocked . fix . (. (xmapn %~ unlockV)) . ((.) =<< (ymapn %~) . lockA)
 
 -- | Do not export
 pullCoerce :: RecurseL a -> XY -> RecurseL a
 pullCoerce _ (X x) = lock . return . unsafeCoerce $ x
 
--- | Pull a layer out of a `RecurseL`
-pull :: ( XMapC s Y 'Locked s
-        , XMapN s
-        ) => RecurseL s -> XMapF s Y 'Locked s
-pull x@(Recurse y) = (xmapn %~ pullCoerce x) y
+-- -- | Pull a layer out of a `RecurseL`
+-- pull :: ( XMapC s Y 'Locked s
+--         , XMapN s
+--         ) => RecurseL s -> XMapF s Y 'Locked s
+-- pull x@(Recurse y) = (xmapn %~ pullCoerce x) y
 
 
 type family RecTypeA (a :: *) :: * where

@@ -1,18 +1,18 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeInType #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE InstanceSigs #-}
+-- {-# LANGUAGE GADTs #-}
+-- {-# LANGUAGE TypeFamilies #-}
+-- {-# LANGUAGE PolyKinds #-}
+-- {-# LANGUAGE DataKinds #-}
+-- {-# LANGUAGE TypeInType #-}
+-- {-# LANGUAGE RankNTypes #-}
+-- {-# LANGUAGE FlexibleContexts #-}
+-- {-# LANGUAGE FlexibleInstances #-}
+-- {-# LANGUAGE TypeSynonymInstances #-}
+-- {-# LANGUAGE ScopedTypeVariables #-}
+-- {-# LANGUAGE NoMonomorphismRestriction #-}
+-- {-# LANGUAGE MultiParamTypeClasses #-}
+-- {-# LANGUAGE UndecidableInstances #-}
+-- {-# LANGUAGE TypeOperators #-}
+-- {-# LANGUAGE InstanceSigs #-}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
@@ -20,7 +20,7 @@
 module Data.Lifted where
 
 -- | Type-level natural numbers. Nothing special here.
-data Nat = Z | S Nat deriving (Eq, Ord, Show)
+-- data Nat = Z | S Nat deriving (Eq, Ord, Show)
 
 -- | Type-level `$`
 infixr 0 :$

@@ -1,13 +1,4 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeInType #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Data.X where
@@ -26,14 +17,6 @@ import Data.Function (fix)
 import Data.Kind
 import GHC.TypeLits( ErrorMessage(..), TypeError )
 
-newtype W (a :: k) = W { getW :: ToStar a }
-type family ToStar (a :: k) :: * where
-  ToStar (a :: *) =   a
-  ToStar (a :: k) = W a
-
--- instance Typeable (W a) => Show (W (a :: *)) where
---   show = show . typeOf
-
 -- | `X` is a semi-magic type. As an inhabited type, it may be safely
 -- coerced to and from using `pure`/`return` and `extract`.
 -- As an uninhabited type, it is used in type families
@@ -43,8 +26,8 @@ type family ToStar (a :: k) :: * where
 newtype X (a :: k) = X { getX :: Any }
 
 type family UnX (a :: *) :: k where
-  UnX (X a) =                                                  a
-  UnX    a  = TypeError ('Text "UnX called on " :<>: 'ShowType a :<>: 'Text ", which is not of the form 'X _'.")
+  UnX (X a) =                                                   a
+  UnX    a  = TypeError ('Text "UnX called on " ':<>: 'ShowType a ':<>: 'Text ", which is not of the form 'X _'.")
 
 -- | Convenience alias
 type XX k = X (X :: k -> *)
@@ -81,25 +64,23 @@ type family (.||) (a :: *) (b :: *) :: * where
   (.||) (X VoidX) b = b
   (.||)  a        b = a
 
-
 -- | An empty value
 xX :: X (a :: k -> *)
 xX = X (error "(xX :: X (a :: k -> *)) is uninhabited..and you can't extract the X...WTF did you do?")
 
 
--- | Clean notation for coercing to `xX`
-class XCoerce a b where
-  (>-) :: X a -> b -> b
-  (-<) :: b -> X a -> b
-  (-<) = flip (>-)
-
--- instance XCoerce (X X) (Rec a) where
---   (>-) :: X X -> Rec a -> Rec a
---   (>-) (X x) r = Rec (unsafeCoerce x)
-
-instance XCoerce a (X X) where
-  (>-) x _ = X (unsafeCoerce x)
-
+-- -- | Clean notation for coercing to `xX`
+-- class XCoerce a b where
+--   (>-) :: X a -> b -> b
+--   (-<) :: b -> X a -> b
+--   (-<) = flip (>-)
+--
+-- -- instance XCoerce (X X) (Rec a) where
+-- --   (>-) :: X X -> Rec a -> Rec a
+-- --   (>-) (X x) r = Rec (unsafeCoerce x)
+--
+-- instance XCoerce a (X X) where
+--   (>-) x _ = X (unsafeCoerce x)
 
 
 -- | Wrapper instance

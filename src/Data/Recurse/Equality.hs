@@ -1,23 +1,5 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeInType #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
--- {-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeInType #-}
 
 module Data.Recurse.Equality where
 
@@ -26,7 +8,7 @@ import Data.Kind (Type)
 import GHC.Generics ()
 import Data.Recurse
 import Data.Recurse.Recursing ()
-import Data.Lifted hiding (Nat(..))
+import Data.Lifted
 import Data.X
 import Unsafe.Coerce
 import Data.Proxy

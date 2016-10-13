@@ -19,13 +19,26 @@ library
                      , Data.X.Map
                      , Data.X.Folding
                      , Data.X.Map.TH
+                     , Data.Locking
                      , Data.Recurse
                      , Data.Recurse.Equality
                      , Data.Recurse.Recursing
                      , Data.Recurse.TH
                      , Data.Recurse.TH.Test
+                     , Data.Exists
+                     , Data.Equirecursive
+                     , Data.Equirecursive.Arrow
+                     , Data.Equirecursive.Type
+                     , Data.Equirecursive.Type.Equality
+                     , Data.Equirecursive.List
+                     , Data.Equirecursive.Tree
+                     , Data.Equirecursive.Graph
+                     , Data.Equirecursive.Exists
+                     , Data.Equirecursive.Function
+                     , Data.Equirecursive.Test
                      , Data.Lifted
-  ghc-options:         -Wall
+                     , Data.Lens.Utils
+  ghc-options:         -Wall -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3
                      , contravariant >= 1.4
@@ -38,6 +51,26 @@ library
                      , containers >= 0.5.7.1
                      , ghc-prim
   default-language:    Haskell2010
+  default-extensions:  ConstraintKinds
+                     , DataKinds
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , FunctionalDependencies
+                     , GADTs
+                     , InstanceSigs
+                     , KindSignatures
+                     , MultiParamTypeClasses
+                     , NoMonomorphismRestriction
+                     , PolyKinds
+                     , RankNTypes
+                     , ScopedTypeVariables
+                     , TypeFamilies
+                     , TypeFamilyDependencies
+                     , TypeOperators
+                     , UndecidableInstances
+                     , UndecidableSuperClasses
+
+
 
 executable basic-exe
   hs-source-dirs:      app
@@ -45,6 +78,25 @@ executable basic-exe
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
   default-language:    Haskell2010
+  default-extensions:  ConstraintKinds
+                     , DataKinds
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , FunctionalDependencies
+                     , GADTs
+                     , InstanceSigs
+                     , KindSignatures
+                     , MultiParamTypeClasses
+                     , NoMonomorphismRestriction
+                     , PolyKinds
+                     , RankNTypes
+                     , ScopedTypeVariables
+                     , TypeFamilies
+                     , TypeFamilyDependencies
+                     , TypeOperators
+                     , UndecidableInstances
+                     , UndecidableSuperClasses
+
 
 test-suite basic-test
   type:                exitcode-stdio-1.0
@@ -53,6 +105,25 @@ test-suite basic-test
   build-depends:       base
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
+  default-extensions:  ConstraintKinds
+                     , DataKinds
+                     , FlexibleContexts
+                     , FlexibleInstances
+                     , FunctionalDependencies
+                     , GADTs
+                     , InstanceSigs
+                     , KindSignatures
+                     , MultiParamTypeClasses
+                     , NoMonomorphismRestriction
+                     , PolyKinds
+                     , RankNTypes
+                     , ScopedTypeVariables
+                     , TypeFamilies
+                     , TypeFamilyDependencies
+                     , TypeOperators
+                     , UndecidableInstances
+                     , UndecidableSuperClasses
+
 
 source-repository head
   type:     git

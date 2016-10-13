@@ -103,7 +103,7 @@ type UniqueName = Name
 
 -- | [ar, a0, .. an, br, b, d]
 tyVarBndrs :: Arity -> [TyVarBndr]
-tyVarBndrs ay = (mkStars $ ["ar"] ++ [ 'a' : show i | i <- [0..ay-1]] ++ ["br", "b"]) ++ [KindedTV (mkName "d") $ ConT ''Nat]
+tyVarBndrs ay = undefined -- (mkStars $ ["ar"] ++ [ 'a' : show i | i <- [0..ay-1]] ++ ["br", "b"]) ++ [KindedTV (mkName "d") $ ConT ''Nat]
 
 -- | [ar, a0, .. an, br]
 tyVars :: Arity -> [Type]
@@ -139,7 +139,7 @@ defTypeInstance ay = TySynEqn (tyVars ay ++ [b, d]) $ PromotedT 'False
 
 -- | @type instance Deq ar (Type a0 .. an) br b d = `DeqUnique` ar a0 .. an br b d@
 deqInstance :: TypeName -> UniqueName -> Arity -> Dec
-deqInstance tn un ay = TySynInstD (mkName "Deq") $ TySynEqn [ar, fullType 'a' tn ay, br, b, PromotedT 'S `AppT` d] $ fullRecType (mkName "Deq") un ay
+deqInstance tn un ay = undefined -- TySynInstD (mkName "Deq") $ TySynEqn [ar, fullType 'a' tn ay, br, b, PromotedT 'S `AppT` d] $ fullRecType (mkName "Deq") un ay
   where
     [ar, br, b, d] = map mkVar ["ar", "br", "b", "d"]
 
@@ -171,7 +171,7 @@ baseDeqTypeInstance tn ay = TySynEqn (tyVars ay ++ [fullType 'b' tn ay, d]) $ an
 
 -- |   ReqType ar a0 .. an br (Type b0 .. bn) d = Req ar a0 br b0 ('S d) :&& .. :&& Req ar an br bn ('S d)
 baseReqTypeInstance :: Name -> Arity -> TySynEqn
-baseReqTypeInstance tn ay = TySynEqn (tyVars ay ++ [fullType 'b' tn ay, d]) $ ands [ mkCon "Req" ?$ [ar, a i, br, b i, PromotedT 'S `AppT` d] | i <- [0..ay-1]]
+baseReqTypeInstance tn ay = undefined -- TySynEqn (tyVars ay ++ [fullType 'b' tn ay, d]) $ ands [ mkCon "Req" ?$ [ar, a i, br, b i, PromotedT 'S `AppT` d] | i <- [0..ay-1]]
   where
     [ar, br, d] = mkVars ["ar", "br", "d"]
     a i = mkVar $ 'a' : show i

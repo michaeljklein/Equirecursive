@@ -12,7 +12,8 @@ import Data.String
 import Control.Monad
 import Data.Bifunctor (Bifunctor())
 import Data.Foldable (toList)
-import Data.Recurse (Locking(..), Recurse(..))
+import Data.Recurse (Recurse(..))
+import Data.Locking
 import Data.X (XX)
 
 instance IsString Name where
