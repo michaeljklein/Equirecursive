@@ -26,14 +26,13 @@ import Data.Kind (Type)
 import GHC.Generics ()
 import Data.Recurse
 import Data.Recurse.Recursing ()
-import Data.Lifted
+import Data.Lifted hiding (Nat(..))
 import Data.X
 import Unsafe.Coerce
 import Data.Proxy
 import Data.X.Folding
 
-import GHC.TypeLits hiding (Nat)
-import qualified GHC.TypeLits as T
+import GHC.TypeLits
 
 -------------------------------------------------------------------------------------------
 
@@ -59,12 +58,11 @@ instance (RecEq a b ~ 'False) => RecurseEq a b 'False where
 -- | Type family case impossibility error
 type family Impossible (a :: k0) :: k1 where
   Impossible XY = TypeError ('Text "X XY is always follwed immediately by VoidX")
-  Impossible (n :: T.Nat) = TypeError ('Text "False at: " ':<>: 'ShowType n)      -- Debug a line
 
 -- | Convenient alias for
 -- @`Req` (`UnfoldX` a) (`UnfoldX` a) (`UnfoldX` b) (`UnfoldX` b) `Z`@
 type family RecEq (a :: Type) (b :: Type) :: Bool where
-  RecEq a b = Req (UnfoldX a) (UnfoldX a) (UnfoldX b) (UnfoldX b) 'Z
+  RecEq a b = Req (UnfoldX a) (UnfoldX a) (UnfoldX b) (UnfoldX b) 0
 
 -------------------------------------------------------------------------------------------
 --
@@ -123,14 +121,14 @@ type family Req (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
   Req ar (  a  .: VoidX) br (X XY .: bs   ) d =  Impossible XY
   Req ar (  a  .: VoidX) br (X b  .: VoidX) d = 'False
   Req ar (  a  .: VoidX) br (X b  .: bs   ) d = 'False
-  Req ar (  a  .: VoidX) br (  b  .: VoidX) d =  Req ar a br b ('S d)
+  Req ar (  a  .: VoidX) br (  b  .: VoidX) d =  Req ar a br b (d + 1)
   Req ar (  a  .: VoidX) br (  b  .: bs   ) d = 'False
   Req ar (  a  .: as   ) br (X XY .: VoidX) d =  Deq br br ar (a .: as) d
   Req ar (  a  .: as   ) br (X XY .: bs   ) d =  Impossible XY
   Req ar (  a  .: as   ) br (X b  .: VoidX) d = 'False
   Req ar (  a  .: as   ) br (X b  .: bs   ) d = 'False
   Req ar (  a  .: as   ) br (  b  .: VoidX) d = 'False
-  Req ar (  a  .: as   ) br (  b  .: bs   ) d =  Req ar a br b ('S d) :&& Req ar as br bs d
+  Req ar (  a  .: as   ) br (  b  .: bs   ) d =  Req ar a br b (d + 1) :&& Req ar as br bs d
 
 -- | The second step of the equality algorithm. Recurse on constructors,
 -- checking equality and replacing @a ~ (`X` `XY` `.:` `VoidX`) => a -> ar@
@@ -139,41 +137,41 @@ type family Req (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
 -- which is @`>=` `lcm` depthA depthB@. Thus all possible offsets of @a@
 -- and @b@ have been checked and @a `/=` b@.
 type family Deq (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: Bool where
-  Deq ar (X XY .: VoidX) br (X XY .: VoidX) ('S d) = 'True
-  Deq ar (X XY .: VoidX) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X XY .: VoidX) br (X b  .: VoidX) ('S d) =  Deq ar ar br (X b .: VoidX) ('S d)
-  Deq ar (X XY .: VoidX) br (X b  .: bs   ) ('S d) =  Deq ar ar br (X b .: bs   ) ('S d)
-  Deq ar (X XY .: VoidX) br (  b  .: VoidX) ('S d) =  Deq ar ar br (  b .: VoidX) ('S d)
-  Deq ar (X XY .: VoidX) br (  b  .: bs   ) ('S d) =  Deq ar ar br (  b .: bs   ) ('S d)
-  Deq ar (X XY .: as   ) br (X XY .: VoidX) ('S d) =  Impossible XY
-  Deq ar (X XY .: as   ) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X XY .: as   ) br (X b  .: VoidX) ('S d) =  Impossible XY
-  Deq ar (X XY .: as   ) br (X b  .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X XY .: as   ) br (  b  .: VoidX) ('S d) =  Impossible XY
-  Deq ar (X XY .: as   ) br (  b  .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X a  .: VoidX) br (X XY .: VoidX) ('S d) =  Deq ar (X a .: VoidX) br br d
-  Deq ar (X a  .: VoidX) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X a  .: VoidX) br (X b  .: VoidX) ('S d) =  X a == X b
-  Deq ar (X a  .: VoidX) br (X b  .: bs   ) ('S d) = 'False
-  Deq ar (X a  .: VoidX) br (  b  .: VoidX) ('S d) = 'False
-  Deq ar (X a  .: VoidX) br (  b  .: bs   ) ('S d) = 'False
-  Deq ar (X a  .: as   ) br (X XY .: VoidX) ('S d) =  Deq ar (X a .: as   ) br br d
-  Deq ar (X a  .: as   ) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (X a  .: as   ) br (X b  .: VoidX) ('S d) = 'False
-  Deq ar (X a  .: as   ) br (X b  .: bs   ) ('S d) =  (X a == X b) :&& Deq ar as br bs ('S d)
-  Deq ar (X a  .: as   ) br (  b  .: VoidX) ('S d) = 'False
-  Deq ar (X a  .: as   ) br (  b  .: bs   ) ('S d) = 'False
-  Deq ar (  a  .: VoidX) br (X XY .: VoidX) ('S d) =  Deq ar (a .: VoidX) br br d
-  Deq ar (  a  .: VoidX) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (  a  .: VoidX) br (X b  .: VoidX) ('S d) = 'False
-  Deq ar (  a  .: VoidX) br (X b  .: bs   ) ('S d) = 'False
-  Deq ar (  a  .: VoidX) br (  b  .: VoidX) ('S d) =  Deq ar a br b ('S d)
-  Deq ar (  a  .: VoidX) br (  b  .: bs   ) ('S d) = 'False
-  Deq ar (  a  .: as   ) br (X XY .: VoidX) ('S d) =  Deq ar (a .: as) br br d
-  Deq ar (  a  .: as   ) br (X XY .: bs   ) ('S d) =  Impossible XY
-  Deq ar (  a  .: as   ) br (X b  .: VoidX) ('S d) = 'False
-  Deq ar (  a  .: as   ) br (X b  .: bs   ) ('S d) = 'False
-  Deq ar (  a  .: as   ) br (  b  .: VoidX) ('S d) = 'False
-  Deq ar (  a  .: as   ) br (  b  .: bs   ) ('S d) =  Deq ar a br b ('S d) :&& Deq ar as br bs ('S d)
-  Deq ar (  a          ) br (  b          ) ('Z  ) = 'False
+  Deq ar (X XY .: VoidX) br (X XY .: VoidX) d = 'True
+  Deq ar (X XY .: VoidX) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (X XY .: VoidX) br (X b  .: VoidX) d =  Deq ar ar br (X b .: VoidX) d
+  Deq ar (X XY .: VoidX) br (X b  .: bs   ) d =  Deq ar ar br (X b .: bs   ) d
+  Deq ar (X XY .: VoidX) br (  b  .: VoidX) d =  Deq ar ar br (  b .: VoidX) d
+  Deq ar (X XY .: VoidX) br (  b  .: bs   ) d =  Deq ar ar br (  b .: bs   ) d
+  Deq ar (X XY .: as   ) br (X XY .: VoidX) d =  Impossible XY
+  Deq ar (X XY .: as   ) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (X XY .: as   ) br (X b  .: VoidX) d =  Impossible XY
+  Deq ar (X XY .: as   ) br (X b  .: bs   ) d =  Impossible XY
+  Deq ar (X XY .: as   ) br (  b  .: VoidX) d =  Impossible XY
+  Deq ar (X XY .: as   ) br (  b  .: bs   ) d =  Impossible XY
+  Deq ar (X a  .: VoidX) br (X XY .: VoidX) d =  Deq ar (X a .: VoidX) br br (d - 1)
+  Deq ar (X a  .: VoidX) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (X a  .: VoidX) br (X b  .: VoidX) d =  X a == X b
+  Deq ar (X a  .: VoidX) br (X b  .: bs   ) d = 'False
+  Deq ar (X a  .: VoidX) br (  b  .: VoidX) d = 'False
+  Deq ar (X a  .: VoidX) br (  b  .: bs   ) d = 'False
+  Deq ar (X a  .: as   ) br (X XY .: VoidX) d =  Deq ar (X a .: as   ) br br (d - 1)
+  Deq ar (X a  .: as   ) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (X a  .: as   ) br (X b  .: VoidX) d = 'False
+  Deq ar (X a  .: as   ) br (X b  .: bs   ) d =  (X a == X b) :&& Deq ar as br bs (d)
+  Deq ar (X a  .: as   ) br (  b  .: VoidX) d = 'False
+  Deq ar (X a  .: as   ) br (  b  .: bs   ) d = 'False
+  Deq ar (  a  .: VoidX) br (X XY .: VoidX) d =  Deq ar (a .: VoidX) br br (d - 1)
+  Deq ar (  a  .: VoidX) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (  a  .: VoidX) br (X b  .: VoidX) d = 'False
+  Deq ar (  a  .: VoidX) br (X b  .: bs   ) d = 'False
+  Deq ar (  a  .: VoidX) br (  b  .: VoidX) d =  Deq ar a br b (d)
+  Deq ar (  a  .: VoidX) br (  b  .: bs   ) d = 'False
+  Deq ar (  a  .: as   ) br (X XY .: VoidX) d =  Deq ar (a .: as) br br (d - 1)
+  Deq ar (  a  .: as   ) br (X XY .: bs   ) d =  Impossible XY
+  Deq ar (  a  .: as   ) br (X b  .: VoidX) d = 'False
+  Deq ar (  a  .: as   ) br (X b  .: bs   ) d = 'False
+  Deq ar (  a  .: as   ) br (  b  .: VoidX) d = 'False
+  Deq ar (  a  .: as   ) br (  b  .: bs   ) d =  Deq ar a br b (d) :&& Deq ar as br bs (d)
+  Deq ar (  a          ) br (  b          ) 0 = 'False
 
