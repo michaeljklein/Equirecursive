@@ -16,7 +16,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FunctionalDependencies #-}
-
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Data.Recurse.Recursing where
@@ -34,6 +33,37 @@ import Data.Void
 import Control.Comonad
 import Data.Type.Equality
 import Data.Proxy
+
+-- TODO: Need a get type family that, given a constructor @c@,
+-- either gets the unique @c a@ such that @c a `Elem` input@
+-- or fails.
+--
+-- This will allow for
+-- 1) a version of pull that works inside nested types,
+-- 2) a real push function
+-- 3) pushN and pullN functions.
+--
+-- Remember, also need to make a few fun generic things such as
+-- - stateful infinite types
+-- - convert a function into one that allows reporting its arguments
+-- - MonoFunctor, etc, for infinite types (such as RecurseL (Int, XY))
+-- - an infinite-type based printf
+-- - several infinite-type combinators
+-- - Isos, Prisms
+-- - generic infinite-type functions
+-- - an arrowish or even category-level version of rec
+-- - a $ function for RecurseL (a -> c XY), which is much more limited than an automatic push
+-- - Comonad instances for infinite types
+-- - Infinite type transformers (Either a XY, anyone?)
+-- - A nice family of infinite-type newtypes
+-- - Infinite-type lists, binary trees, existential types, and graphs, at least
+-- - lenses for various infinite types. possibly even a generic destructor?
+-- - I think there was an infinite-type solution to something with Conduits, like nested conduit tricks or something
+--
+-- Don't forget to start making theorem functions once all the classes are done.
+-- I think GetX, Pull, Push, and rec' (given f, derive f' for RecurseL f') are the
+-- last of them.
+
 
 -- | Since @`Recurse` `Locked`@ isn't exported, this should effectively
 -- be equivalent to @forall t. t@
@@ -101,6 +131,7 @@ bmap = unsafeCoerce
 
 recT :: RecType a -> RecurseL a
 recT f = lock . return . fix $ bmap . f . amap
+
 
 pullT :: RecurseL a -> MapT XY (RecurseL a) a
 pullT = unsafeCoerce

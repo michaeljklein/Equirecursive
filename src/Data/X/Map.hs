@@ -126,7 +126,6 @@ type family ElemX (a :: * ) (b :: * ) :: Bool where
   ElemX a (  b .: etc  ) =  ElemX a b :|| ElemX a etc
   ElemX a (  b         ) = 'False
 
-
 -- | Replace all instances of @from@ with @to@ in @a@.
 -- See `Elem` for when @from@ is recognized in @a@.
 type family MapT  (from :: k0) (to :: k0) (a :: k) :: k where

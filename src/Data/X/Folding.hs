@@ -22,6 +22,10 @@ import Data.Typeable
 import Data.X
 import GHC.TypeLits( ErrorMessage(..), TypeError )
 
+import Data.Type.Equality
+
+-- TODO: add :set -fprint-unicode-syntax, most of these language pragmas to the .cabal file
+
 -- Idea: Abstract a function, or module. Abstracting a single function just is
 -- func_example :: t -> $(abstract 'func_example) = func const1 .. constn :: (typeOf const1) -> .. -> (typeOf constn) -> t
 -- Abstracting multiple functions is harder. Consider:
@@ -41,7 +45,6 @@ import GHC.TypeLits( ErrorMessage(..), TypeError )
 data Unfold a where
   Unfold :: a -> Unfold (UnfoldX a)
 
-
 -- | Recursively unfold a type
 type family UnfoldX (a :: k) :: Type where
   UnfoldX a = UnfoldXL VoidX (X a)
@@ -49,8 +52,8 @@ type family UnfoldX (a :: k) :: Type where
 -- | Recursively unfold a type with given argument list
 type family UnfoldXL (l :: Type) (a :: Type) :: Type where
   UnfoldXL l (X (X Y)) =                 X (X Y) .: l
-  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| (X c .: (UnfoldX a .: l))
-  UnfoldXL l (X  c   ) =                 X c .: l
+  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX (a  ) .: l) (X c) -- .|| (X c .: (UnfoldX a .: l))
+  UnfoldXL l (X  c   ) =                 X (c  ) .: l
 
 
 -- | Recursively fold a (X type :. type list)
@@ -60,9 +63,10 @@ type family FoldX (a :: Type) = (b :: Type) where
   FoldX (X (c :: k) .:  VoidX  ) =        X (c :: k)
   FoldX (X (c :: k) .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
 
--- | This is like fromJust
+-- | This is like fromJust. It should always succeed, as long
+-- as its argument is exactly the format output by `UnfoldX`.
 type family FoldXType (a :: Type) :: Type where
-  FoldXType (X (c :: Type) .:  VoidX  ) =              c
+  FoldXType (X (c :: Type) .:  VoidX  ) =               c
   FoldXType (X (c :: k   ) .:  VoidX  ) = TypeError ('Text "FoldXType: Type " ':<>: 'ShowType c ':<>: 'Text "does not have kind *.")
   FoldXType (X (c        ) .: (a .: b)) = FoldXType (X (c (FoldXType a)) .: b)
 
