@@ -1,26 +1,11 @@
--- {-# LANGUAGE GADTs #-}
--- {-# LANGUAGE TypeFamilies #-}
--- {-# LANGUAGE PolyKinds #-}
--- {-# LANGUAGE DataKinds #-}
--- {-# LANGUAGE TypeInType #-}
--- {-# LANGUAGE RankNTypes #-}
--- {-# LANGUAGE FlexibleContexts #-}
--- {-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE TypeSynonymInstances #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
--- {-# LANGUAGE NoMonomorphismRestriction #-}
--- {-# LANGUAGE MultiParamTypeClasses #-}
--- {-# LANGUAGE UndecidableInstances #-}
--- {-# LANGUAGE TypeOperators #-}
--- {-# LANGUAGE InstanceSigs #-}
-
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
 
 module Data.Lifted where
 
--- | Type-level natural numbers. Nothing special here.
--- data Nat = Z | S Nat deriving (Eq, Ord, Show)
+import GHC.TypeLits( ErrorMessage(..), TypeError )
+import Data.Kind
+
 
 -- | Type-level `$`
 infixr 0 :$
@@ -33,4 +18,20 @@ type family (:&&) (a :: Bool) (b :: Bool) where
   'True :&& 'True = 'True
   a     :&& b     = 'False
 
+
+type family Not (a :: Bool) :: Bool where
+  Not 'True  = 'False
+  Not 'False = 'True
+
+type family (:||) (a :: Bool) (b :: Bool) :: Bool where
+  'False :|| 'False = 'False
+  a      :|| b      = 'True
+
+type family (+?+) (a :: Constraint) (b :: Constraint) where
+  () +?+ b  = b
+  a  +?+ () = a
+  a  +?+ b  = (a, b)
+
+type family (?&?) (a :: * -> Constraint) (b :: * -> Constraint) :: * -> Constraint where
+  (?&?) a b = TypeError ('Text "Not implemented")
 

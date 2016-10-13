@@ -1,11 +1,11 @@
 {-# LANGUAGE TypeInType #-}
 
-module Data.Recurse (Recurse(..), RecurseL, RecurseU, unlock, lock) where
+module Data.Recurse where
 
 import Data.Kind
-import Data.Type.Equality
 import Control.Comonad
 import Data.Locking
+import Data.Void
 -- import Unsafe.Coerce
 
 -- | Do not export constructors or destructors
@@ -16,6 +16,11 @@ type RecurseL a = Recurse 'Locked   a
 
 -- | Convenience alias
 type RecurseU a = Recurse 'Unlocked a
+
+-- | Since @`Recurse` `Locked`@ isn't exported, this should effectively
+-- be equivalent to @forall t. t@
+type RecurseV = Recurse 'Locked Void
+
 
 -- | Lock a `RecurseU`.
 -- Make into a class. Also have @`lock` :: `X` a -> `X` (b :: k -> *)@

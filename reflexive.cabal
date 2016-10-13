@@ -18,13 +18,10 @@ library
   exposed-modules:     Data.X
                      , Data.X.Map
                      , Data.X.Folding
-                     , Data.X.Map.TH
                      , Data.Locking
                      , Data.Recurse
                      , Data.Recurse.Equality
                      , Data.Recurse.Recursing
-                     , Data.Recurse.TH
-                     , Data.Recurse.TH.Test
                      , Data.Exists
                      , Data.Equirecursive
                      , Data.Equirecursive.Arrow
@@ -37,7 +34,7 @@ library
                      , Data.Equirecursive.Function
                      , Data.Equirecursive.Test
                      , Data.Lifted
-                     , Data.Lens.Utils
+                     , Control.Lens.Utils
   ghc-options:         -Wall -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3

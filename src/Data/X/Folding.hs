@@ -8,13 +8,44 @@ import Data.Tree
 import Data.Typeable
 import Data.X
 import GHC.TypeLits( ErrorMessage(..), TypeError )
+import Data.Type.Equality
+import Data.Lifted
 
--- DONE
 
 -- | Check whether a type is atomic
 type family IsAtom (a :: k) :: Bool where
   IsAtom (c a) = 'False
   IsAtom    a  = 'True
+
+-- | Unit type with @'`Passes` :: `Passes`@ for assertions.
+data Passes = Passes deriving (Eq, Ord, Show)
+
+-- sketch of how this could be used with quickcheck:
+-- testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> Passes
+-- testNonAtom (OfKind x) (OfKind y) = testNonAtom_ x y
+-- testNonAtom_ :: X (a :: k0 -> k1) -> X (b :: k0) -> TestNonAtom a b
+
+-- | Results in a `TypeError` if `False`
+type family Assert (b :: Bool) (e :: ErrorMessage) :: Passes where
+  Assert 'True  e = 'Passes
+  Assert 'False e = TypeError e
+
+type family ShowType2 (a0 :: k0) (a1 :: k1) :: ErrorMessage where
+  ShowType2 a0 a1 = 'Text "\n  " ':<>: 'ShowType a0 ':<>: 'Text "\n  " ':<>: 'ShowType a1 ':<>: 'Text "\n"
+
+-- | Results in a `TypeError` if `/=`. Reports its arguments upon error.
+type family AssertEq (a :: k) (b :: k) :: Passes where
+  AssertEq a b = Assert (a == b) ('Text "AssertEq failed with arguments:" ':<>: ShowType2 a b)
+
+
+type family TestNonAtom (a :: k0 -> k1) (b :: k0) :: Passes where
+  TestNonAtom a b = Assert (Not (IsAtom (a b))) ('Text "TestNonAtom run on:" ':<>: ShowType2 a b)
+
+-- | Assert that @`FoldX` (`UnfoldX` a) == `X` a@
+type family TestUnfoldFold (a :: k) :: Passes where
+  TestUnfoldFold a = AssertEq (FoldX (UnfoldX a)) (X a)
+
+
 
 -- | Recursively unfold a type
 type family UnfoldX (a :: k) :: Type where
@@ -30,8 +61,10 @@ type family UnfoldXL (l :: Type) (a :: Type) :: Type where
 -- Should have:
 -- @`FoldX` (`UnfoldX` a) == `X` a@
 type family FoldX (a :: Type) = (b :: Type) where
-  FoldX (X (c :: k) .:  VoidX  ) =        X (c :: k)
-  FoldX (X (c :: k) .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
+  FoldX (X (c :: k)       .:   (VoidX  )) =       (X (c :: k)                )
+  FoldX (X (c :: k)       .:   (a .: b )) = FoldX (X (c :: k) .$ FoldX a .: b)
+  FoldX (X (c :: k0 -> k) .: X (a :: k0)) =       (X (c    a)                )
+  FoldX (X (c :: k)                     ) =       (X (c :: k)                )
 
 -- | This is like fromJust. It should always succeed, as long
 -- as its argument is exactly the format output by `UnfoldX`.

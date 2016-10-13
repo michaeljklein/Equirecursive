@@ -1,7 +1,18 @@
 module Control.Lens.Utils where
 
+import Control.Applicative (liftA2)
+import Control.Arrow (Arrow, arr)
+import Control.Category (Category(..))
+import Control.Comonad
 import Control.Lens
+import Control.Lens.Internal.Setter (Settable(..))
 import Control.Lens.Iso
+import Control.Monad (join)
+import Data.Bifunctor (Bifunctor(bimap))
+import Data.Functor.Product
+import GHC.Exts (Coercible)
+import GHC.Generics
+import Prelude hiding (id, (.))
 
 fmapSetter :: Functor f => Setter s t a b -> Setter (f s) (f t) a b
 fmapSetter s0 f = pure . fmap (untainted . s0 f)

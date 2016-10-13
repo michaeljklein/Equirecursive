@@ -13,7 +13,6 @@ import Data.X
 import Unsafe.Coerce
 import Data.Proxy
 import Data.X.Folding
-
 import GHC.TypeLits
 
 -------------------------------------------------------------------------------------------

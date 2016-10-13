@@ -38,6 +38,8 @@ type Y = (X :: * -> *)
 -- | Synonym for ease of typing
 type XY = X Y
 
+type XV = X VoidX
+
 -- | `X`-level `[]`. Could handle being renamed.
 data VoidX
 
