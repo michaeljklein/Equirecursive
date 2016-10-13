@@ -69,8 +69,11 @@ data (.:) (a :: *) (b :: *) = (.:) a b
 
 infixr 2 .$
 -- | `X`-level `($)`
-type family (.$) (a :: *) (b :: *) :: * where
+type family (.$) (a :: *) (b :: *) = (c :: *) | c -> a b where
   (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
+
+type family XApp (a :: *) = (b :: *) | b -> a where
+  XApp (X (c :: k -> k1) .: X (a :: k)) = X (c a)
 
 infixr 0 .||
 -- | `X`-level `(||)`

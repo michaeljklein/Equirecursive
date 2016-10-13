@@ -10,6 +10,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 module Data.X.Folding where
 
@@ -19,8 +22,25 @@ import Data.Typeable
 import Data.X
 import GHC.TypeLits( ErrorMessage(..), TypeError )
 
+-- Idea: Abstract a function, or module. Abstracting a single function just is
+-- func_example :: t -> $(abstract 'func_example) = func const1 .. constn :: (typeOf const1) -> .. -> (typeOf constn) -> t
+-- Abstracting multiple functions is harder. Consider:
+-- bindMaybe_example1 (Just f) x = Just (f x)
+-- bindMaybe_example2 Nothing  _ = Nothing
+-- bindMaybe = (>>=)
+-- $(abstractN 'bindMaybe_example1 'bindMaybe_example2)
+--
+-- mySum_example1 x y   = x + y
+-- mySum_example2 x y z = x + y + z  -- or even mySum_example2 = 1 + 2 + 3?
+-- mySum                = foldl1 (+)
+-- $(abstractN 'mySum_example1 'mySum_example2)
+--
+-- Need to take the source-lcm of the examples somehow, though obviously only a few types of abstractions could be supported.
+
+
 data Unfold a where
   Unfold :: a -> Unfold (UnfoldX a)
+
 
 -- | Recursively unfold a type
 type family UnfoldX (a :: k) :: Type where
@@ -28,28 +48,24 @@ type family UnfoldX (a :: k) :: Type where
 
 -- | Recursively unfold a type with given argument list
 type family UnfoldXL (l :: Type) (a :: Type) :: Type where
-  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| X c .: (UnfoldX a .: l)
-  UnfoldXL l (X  c   ) =                                     X c .:               l
-
+  UnfoldXL l (X (X Y)) =                 X (X Y) .: l
+  UnfoldXL l (X (c a)) = UnfoldXL (UnfoldX a .: l) (X c) .|| (X c .: (UnfoldX a .: l))
+  UnfoldXL l (X  c   ) =                 X c .: l
 
 
 -- | Recursively fold a (X type :. type list)
 -- Should have:
 -- @`FoldX` (`UnfoldX` a) == `X` a@
-type family FoldX (a :: Type) :: Type where
-  FoldX (X c .:  VoidX  ) =        X c
-  FoldX (X c .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
+type family FoldX (a :: Type) = (b :: Type) where
+  FoldX (X (c :: k) .:  VoidX  ) =        X (c :: k)
+  FoldX (X (c :: k) .: (a .: b)) = FoldX (X c .$ FoldX a .: b)
 
 -- | This is like fromJust
 type family FoldXType (a :: Type) :: Type where
   FoldXType (X (c :: Type) .:  VoidX  ) =              c
-  FoldXType (X (c :: k   ) .:  VoidX  ) = TypeError ('Text "FoldXType: Type " ':<>: ShowType c ':<>: 'Text "does not have kind *.")
-  FoldXType (X (c        ) .: (a .: b)) = FoldXType (X c .$ FoldX a .: b)
+  FoldXType (X (c :: k   ) .:  VoidX  ) = TypeError ('Text "FoldXType: Type " ':<>: 'ShowType c ':<>: 'Text "does not have kind *.")
+  FoldXType (X (c        ) .: (a .: b)) = FoldXType (X (c (FoldXType a)) .: b)
 
-
-
--- type family UnfoldXMap (x :: Type) (a :: Type) :: Type where
---   UnfoldXMap (X x) (X x .: as) =
 
 -- | Show an unfolded type in tree form
 showToTree :: ToTree a => a -> String
@@ -99,7 +115,7 @@ instance ToForest VoidX where
   toForest _ = []
 
 -- | Check whether a type is atomic
-type family IsAtom (a :: *) :: Bool where
+type family IsAtom (a :: k) :: Bool where
   IsAtom (c a) = 'False
   IsAtom    a  = 'True
 

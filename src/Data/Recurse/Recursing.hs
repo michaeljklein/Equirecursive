@@ -13,6 +13,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FunctionalDependencies #-}
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
@@ -29,6 +32,8 @@ import Data.Function (fix)
 import Control.Lens.Setter ((%~))
 import Data.Void
 import Control.Comonad
+import Data.Type.Equality
+import Data.Proxy
 
 -- | Since @`Recurse` `Locked`@ isn't exported, this should effectively
 -- be equivalent to @forall t. t@
@@ -100,11 +105,65 @@ recT f = lock . return . fix $ bmap . f . amap
 pullT :: RecurseL a -> MapT XY (RecurseL a) a
 pullT = unsafeCoerce
 
--- (a -> b) -> (t -> a) -> (b -> t) -> (t -> t)
+-- TODO: MapT from to a ~ b <=> _
+-- fst $ pullT (undefined :: RecurseL (a, b))
+  -- :: UnX
+  --      (FoldX
+  --         (X (,)
+  --          .: MapTX
+  --               (X X .: ((X X .: VoidX) .: VoidX))
+  --               (X Recurse
+  --                .: ((X 'Locked .: VoidX)
+  --                    .: ((X (,)
+  --                         .: (UnfoldXL VoidX (X a1) .: (UnfoldXL VoidX (X b1) .: VoidX)))
+  --                        .: VoidX)))
+  --               (UnfoldXL VoidX (X a1) .: (UnfoldXL VoidX (X b1) .: VoidX))))
+  --    ~
+  --    (a, b)
 
--- RecTypeA (Int, XY) = (Int, RecurseV)
--- RecTypeB (Int, XY) = (Int, (RecurseU (Int, RecurseV)))
--- RecType  (Int, XY) = RecTypeA (Int, XY) -> RecTypeB (Int, XY)
+-- Distributivity of type equality over MapT from to
+-- ((MapT XY () (a, b)) ~ (MapT XY () (c, d))) == (MapT XY () a ~ MapT XY () c, MapT XY () b ~ MapT XY () d)
+
+-- One approach is to use a defaulting to a datatype in MapT. So then, we can pattern match on unevaluated 'type families'.
+-- Another approach, is to apply the constraint distribution _before_ applying the other type families.
+-- Still another approach, is to combine the type family with a GADT and do a little unsafe magic given that it always contains the type family
+--   This approach appears to be untenable
+--     type family F (a :: *) where
+--       F (unx a) = a
+--     (undefined :: F (UnX a)) = F (UnX a)
+
+type family DistEq (c :: Constraint) :: Constraint
+
+type instance DistEq ((a, b) ~ (c, d)) = (a ~ c, b ~ d)
+
+type family (=~) (a :: k) (b :: k) :: Bool
+
+
+type family (=~=) (a :: k) (b :: k) :: Constraint
+
+type instance (=~=) (a, b) (c, d) = (a ~ c, b ~ d)
+
+(~=~) :: forall (a :: k) (b :: k). a =~= b => Proxy a -> Proxy b -> a :~: b
+(~=~) = unsafeCoerce Refl
+
+-- distEq :: (c => a) -> Maybe (DistEq c)
+-- distEq = undefined
+
+-- λ> :t fst $ pullT (undefined :: (a, RecurseL (b, c)))
+--
+-- <interactive>:1:14: error:
+--     • Couldn't match type ‘(a1, RecurseL (b1, c0))’
+--                      with ‘Recurse 'Locked a0’
+--       Expected type: RecurseL a0
+--         Actual type: (a1, RecurseL (b1, c0))
+--     • In the first argument of ‘pullT’, namely
+--         ‘(undefined :: (a, RecurseL (b, c)))’
+--       In the second argument of ‘($)’, namely
+--         ‘pullT (undefined :: (a, RecurseL (b, c)))’
+--       In the expression: fst $ pullT (undefined :: (a, RecurseL (b, c)))
+
+
+
 
 
 -- r1 = rec ((\x -> (0, return x)) :: (Int, RecurseV) -> (Int, RecurseU (Int, RecurseV)))
@@ -112,21 +171,21 @@ pullT = unsafeCoerce
 -- 0
 -- λ> fst . pull . snd . pull $ r1
 -- 0
-
+--
 -- let r2 = rec ((\(x, (y, xy)) -> (0, (1, return (x+1, (y+1, xy))))) :: (Int, (Int, RecurseV)) -> (Int, (Int, (RecurseU (Int, (Int, RecurseV))))))
-
+--
 -- let r3 = rec ((\(x, (y, (z, xy))) -> (0, (1, (2, return (x, (y, (z, xy))))))) :: (Int, (Int, (Int, RecurseV))) -> (Int, (Int, (Int, RecurseU (Int, (Int, (Int, RecurseV)))))))
-
+--
 -- λ> req r3 r2
 -- Just Refl
-
+--
 -- λ> fst . pull . snd . snd . pull $ r3'
 -- 2
 -- *Main Data.Lifted Data.Recurse Data.Recurse.Equality Data.Recurse.Recursing Data.Recurse.TH Data.Recurse.TH.Test Data.X Data.X.Folding Data.X.Map Data.X.Map.TH Control.Monad.Trans.Maybe Data.Bifunctor
 -- λ> let r3' = rcast r3 :: RecurseL (Int, (Int, X X))
-
+--
 -- λ> :t rec ((\f x -> return (fmap (+x) . f)) :: (Int -> (RecurseV, Int)) -> (Int -> RecurseU (Int -> (RecurseV, Int))))
-
+--
 -- <interactive>:1:1: error:
 --     • Couldn't match type ‘XMapF
 --                              (YMapF
@@ -144,9 +203,9 @@ pullT = unsafeCoerce
 --           ((\ f x -> return (fmap (+ x) . f)) ::
 --              (Int -> (RecurseV, Int))
 --              -> (Int -> RecurseU (Int -> (RecurseV, Int))))
-
+--
 -- (Int -> (RecurseV, Int)) -> Int -> RecurseU (Int -> (RecurseV, Int))
-
+--
 -- \f x -> return (fmap (+x) . f)
 
 

@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
@@ -78,13 +79,32 @@ import Data.Recurse (Locking(..), Recurse, lock, unlock)
 import Data.Type.Equality
 import Unsafe.Coerce
 
+-- | Move to Data.Lifted
 type family Not (a :: Bool) :: Bool where
   Not 'True  = 'False
   Not 'False = 'True
 
+-- | Move to Data.Lifted
 type family (:||) (a :: Bool) (b :: Bool) :: Bool where
   'False :|| 'False = 'False
   a      :|| b      = 'True
+
+-- Can make a mapping class Map where (Elem s a, Elem t b) => MapElem s t a b | s -> a, t -> b, s a -> t, t b -> s
+-- This can make use of all the fun TemplateHaskell I've written and, in general, be rather useful.
+-- Could also make an Elem s a class, where we get a Prism
+
+-- class (Elem s a ~ elem) => ElemP s a elem | s a -> elem where
+--   elemP :: Prism
+
+-- class ((Elem s a :&& Elem t b) ~ eq) => Map s t a b eq | s b -> t, t a -> s, s t a b -> eq where
+--   mapt :: Lens s t a b -- ?
+-- instance ((Elem s a :&& Elem s b) ~ 'False) => Map s s a b 'False where
+--   mapt _ = pure
+-- instance (MapElem s t a b, (Elem s a :&& Elem t b) ~ 'True) => Map s t a b 'True where
+--   mapt = maptElem
+-- class MapElem s t a b | s -> a, t -> b, s b -> t, t a -> s where
+--   maptElem :: Lens s t a b
+
 
 -- | Check whether @b@ is constructed from @a@ (on the obvious type level).
 -- E.g.
@@ -113,13 +133,52 @@ type family MapT  (from :: k0) (to :: k0) (a :: k) :: k where
   MapT from to a = UnX (FoldX (MapTX (UnfoldX from) (UnfoldX to) (UnfoldX a)))
 
 -- | `X`-level `MapT`
-type family MapTX (from :: * ) (to :: * ) (a :: k) :: k where
+type family MapTX (from :: * ) (to :: * ) (a :: k) = (b :: k) where
   MapTX from to (  from      ) =                               to
   MapTX from to (X a .: VoidX) =             X a .: VoidX
   MapTX from to (X a .: etc  ) =             X a .: MapTX from to etc
   MapTX from to (  a .: VoidX) = MapTX from to a .: VoidX
   MapTX from to (  a .: etc  ) = MapTX from to a .: MapTX from to etc
   MapTX from to (  a         ) =               a
+
+data (>~) (from :: *) (to :: *) (a :: *)
+type family MapTX2 (a :: *) = (b :: *) | b -> a where
+  MapTX2 ((>~) from to (  a .: etc  )) = ((>~) from to (MapTX2 ((>~) from to a) .: MapTX2 ((>~) from to etc)))
+  MapTX2 ((>~) from to (X a         )) = ((>~) from to (X a))
+  MapTX2 ((>~) from to (VoidX       )) = ((>~) from to VoidX)
+
+data Bit = Ze | Oe | Zs Bit | Os Bit
+
+data Bit2 = Be0 | Be1 | B0 Bit | B1 Bit
+
+data EitherK (a :: k1) (b :: k2)
+data Q3 (a :: *) (b :: *) (c :: *)
+type family (^=) (a :: *) = (b :: *) | b -> a where
+  (^=) (EitherK b (Q3 from to from)) = EitherK ('Zs b) (from, to, to)
+  (^=) (EitherK b (Q3 from to a   )) = EitherK ('Os b) (from, to, a )
+
+data Q (from :: *) (to :: *) (eq :: Bool) (a :: *)
+type family MF (a :: *) = (b :: *) | b -> a where
+  MF (Q from to 'True  from) = (Q from to 'True  to)
+  MF (Q from to 'False a   ) = (Q from to 'False a )
+
+data (>-) (from :: k) (to :: k) (a :: k1)
+data Tag (b :: Bit) (t :: *) (a :: k)
+
+type family UnTag (a :: *) where
+  UnTag (Tag b t (a .: etc)) = UnTag a .: UnTag etc
+  UnTag (Tag b r  a        ) = UnTag a
+  UnTag          (a .: etc)  = UnTag a .: UnTag etc
+  UnTag           a          =       a
+
+-- type family MapG (a :: *) = (b :: *) | b -> a where
+--   MapG ((>-) from to a) = MapQ (Tag 'Ze Void ((>-) (UnfoldX from) (UnfoldX to) (UnfoldX a)))
+
+-- type family MapQ (a :: *) = (b :: *) | b -> a where
+--   MapQ (Tag b t ((>-) from to from)) = Tag (Zs b) (from, to, t) to
+--   MapQ (Tag b t ((>-) from to (a .: etc))) = MapQ (Tag b t ((>-) from to a)) .: MapQ (Tag b t ((>-) from to etc))
+--   MapQ (Tag b t ((>-) from to a)) = Tag (Os b) (from, to, t) a
+
 
 -- | Equivalent datatypes can be coerced between safely (assuming the types are not ?nominal?)
 mapTCoerce  :: Coercible from to => a -> MapT from to a
@@ -130,6 +189,7 @@ mapTCoerce' :: Coercible from to => MapT from to a -> a
 mapTCoerce' = unsafeCoerce
 
 -- | @`MapT` from to@ is the inverse of @`MapT` to from@
+-- TODO: only if not (from `elem` a)
 mapTInverse :: forall from to a. MapT from to (MapT to from a) :~: a
 mapTInverse = unsafeCoerce Refl
 

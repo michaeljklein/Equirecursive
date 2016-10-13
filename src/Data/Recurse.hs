@@ -18,6 +18,9 @@ import Unsafe.Coerce
 
 -- import Data.X.Map (XMap(..))
 
+-- TODO: Should make Recurse 'Locked into a monad? hmmmmm.... would like to give a nice way to return.....
+
+
 -- | An equirecursive data type.
 -- `Rec` should not support unwrapping,
 -- but unfolding is possible. E.g.:
@@ -55,7 +58,8 @@ type RecurseL a = Recurse 'Locked   a
 -- | Convenience alias
 type RecurseU a = Recurse 'Unlocked a
 
--- | Lock a `RecurseU`
+-- | Lock a `RecurseU`.
+-- Make into a class. Also have @`lock` :: `X` a -> `X` (b :: k -> *)@
 lock :: RecurseU a -> RecurseL a
 lock (Recurse x) = Recurse x
 
