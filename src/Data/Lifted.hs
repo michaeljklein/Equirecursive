@@ -12,21 +12,6 @@ infixr 0 :$
 type family (:$) (f :: ka -> kb) (x :: ka) where
   f :$ x = f x
 
--- | Type-level `&&`
-infixr 3 :&&
-type family (:&&) (a :: Bool) (b :: Bool) where
-  'True :&& 'True = 'True
-  a     :&& b     = 'False
-
-
-type family Not (a :: Bool) :: Bool where
-  Not 'True  = 'False
-  Not 'False = 'True
-
-type family (:||) (a :: Bool) (b :: Bool) :: Bool where
-  'False :|| 'False = 'False
-  a      :|| b      = 'True
-
 type family (+?+) (a :: Constraint) (b :: Constraint) where
   () +?+ b  = b
   a  +?+ () = a

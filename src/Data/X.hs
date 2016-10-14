@@ -24,14 +24,6 @@ import Data.Hashable
 import Data.Distributive
 
 
-
--- | TODO: Use `IsStarX` for the rest of the classes, when possible.
-type family IsStarX (a :: *) :: Bool where
-  IsStarX (X (a :: *)) = 'True
-  IsStarX (X (a :: k)) = 'False
-
-
-
 -- | `X` is a semi-magic type. As an inhabited type, it may be safely
 -- coerced to and from using `pure`/`return` and `extract`.
 -- As an uninhabited type, it is used in type families
@@ -83,6 +75,12 @@ infixr 0 .||
 type family (.||) (a :: *) (b :: *) :: * where
   (.||) (X VoidX) b = b
   (.||)  a        b = a
+
+
+-- | Check if @k@ is `Type` in @`X` (a :: k)@.
+type family IsStarX (a :: *) :: Bool where
+  IsStarX (X (a :: *)) = 'True
+  IsStarX (X (a :: k)) = 'False
 
 
 class (IsStarX a ~ star) => DefaultX (a :: *) (star :: Bool) where

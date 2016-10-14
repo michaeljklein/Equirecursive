@@ -17,6 +17,8 @@ import Data.Lifted
 import Data.Tree
 import Data.Maybe
 import Control.Applicative
+import Data.Type.Bool
+
 
 -- data Tree a = Node { rootLabel :: a, subForest :: (Forest a) }
 
@@ -108,7 +110,7 @@ type family ElemX (a :: * ) (b :: * ) :: Bool where
   ElemX a (X b .: VoidX) = 'False
   ElemX a (X b .: etc  ) =                ElemX a etc
   ElemX a (  b .: VoidX) =  ElemX a b
-  ElemX a (  b .: etc  ) =  ElemX a b :|| ElemX a etc
+  ElemX a (  b .: etc  ) =  ElemX a b || ElemX a etc
   ElemX a (  b         ) = 'False
 
 -- | Replace all instances of @from@ with @to@ in @a@.
@@ -201,34 +203,6 @@ type family BurnIf (a :: *) (b :: Bool) :: * where
 --    / \
 --   9   8
 
-
-
--- type family GetX (con :: *) (a :: *) :: * where
--- --GetX (X con .: VoidX) (X con .: VoidX) = X con .: VoidX
---   GetX (X con .: VoidX) (X con .: etc  ) = X con .: etc
---   GetX (X con .: VoidX) (X a   .: VoidX) = XV
---   GetX (X con .: VoidX) (X a   .: etc  ) = GetX (X con .: VoidX) etc
---   GetX (X con .: VoidX) (  a   .: VoidX) = GetX (X con .: VoidX) a
---   GetX (X con .: VoidX) (  a   .: etc  ) = XRec2
---   GetX (X con .: cons ) (X con .: VoidX) = XV
---   GetX (X con .: cons ) (X con .: etc  ) = XRec & Burn
---   GetX (X con .: cons ) (X a   .: VoidX) = XV
---   GetX (X con .: cons ) (X a   .: etc  ) = GetX (X con .: cons ) etc
---   GetX (X con .: cons ) (  a   .: VoidX) = GetX (X con .: cons ) a
---   GetX (X con .: cons ) (  a   .: etc  ) = XRec2 & Burn
---   GetX (  con .: VoidX) (X a   .: VoidX) = XV
---   GetX (  con .: VoidX) (X a   .: etc  ) = XV
---   GetX (  con .: VoidX) (  a   .: VoidX) = GetX (  con .: VoidX) a
---   GetX (  con .: VoidX) (  a   .: etc  ) = XRec2 & Burn
---   GetX (  con .: cons ) (X a   .: VoidX) = XV
---   GetX (  con .: cons ) (X a   .: etc  ) = GetX (  con .: cons ) etc
---   GetX (  con .: cons ) (  a   .: VoidX) = GetX a?
---   GetX (  con .: cons ) (  a   .: etc  ) = X
-
-
-  -- simpleCon = X con
-  -- complexCon = X con .: a .: b .: VoidX
-
 -- | Equivalent datatypes can be coerced between safely (assuming the types are not ?nominal?)
 mapTCoerce  :: Coercible from to => a -> MapT from to a
 mapTCoerce  = unsafeCoerce
@@ -244,7 +218,7 @@ mapTInverse = unsafeCoerce Refl
 
 -- | @`MapT` from to a `==` a@ on types that do not contain @from@.
 -- (See `Elem` for when subtypes can be recognized.)
-mapTElem :: forall from to a. (MapT from to a == a) :~: (Not (Elem from a) :|| (from == to))
+mapTElem :: forall from to a. (MapT from to a == a) :~: (Not (Elem from a) || (from == to))
 mapTElem = unsafeCoerce Refl
 
 -- | `MapT` replaces all instances of @from@ in @a@ with @to@, so the only way that

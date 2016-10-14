@@ -8,12 +8,13 @@ import Data.Kind (Type)
 import GHC.Generics ()
 import Data.Recurse
 import Data.Recurse.Recursing ()
-import Data.Lifted
 import Data.X
 import Unsafe.Coerce
 import Data.Proxy
 import Data.X.Folding
 import GHC.TypeLits
+import Data.Type.Bool
+
 
 -------------------------------------------------------------------------------------------
 
@@ -95,7 +96,7 @@ type family Req (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
   Req ar (X a  .: as   ) br (X XY .: VoidX) d =  Deq br br ar (X a .: as) d
   Req ar (X a  .: as   ) br (X XY .: bs   ) d =  Impossible XY
   Req ar (X a  .: as   ) br (X b  .: VoidX) d = 'False
-  Req ar (X a  .: as   ) br (X b  .: bs   ) d =  (X a == X b) :&& Req ar as br bs d
+  Req ar (X a  .: as   ) br (X b  .: bs   ) d =  (X a == X b) && Req ar as br bs d
   Req ar (X a  .: as   ) br (  b  .: VoidX) d = 'False
   Req ar (X a  .: as   ) br (  b  .: bs   ) d = 'False
   Req ar (  a  .: VoidX) br (X XY .: VoidX) d =  Deq br br ar (a .: VoidX) d
@@ -109,7 +110,7 @@ type family Req (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
   Req ar (  a  .: as   ) br (X b  .: VoidX) d = 'False
   Req ar (  a  .: as   ) br (X b  .: bs   ) d = 'False
   Req ar (  a  .: as   ) br (  b  .: VoidX) d = 'False
-  Req ar (  a  .: as   ) br (  b  .: bs   ) d =  Req ar a br b (d + 1) :&& Req ar as br bs d
+  Req ar (  a  .: as   ) br (  b  .: bs   ) d =  Req ar a br b (d + 1) && Req ar as br bs d
 
 -- | The second step of the equality algorithm. Recurse on constructors,
 -- checking equality and replacing @a ~ (`X` `XY` `.:` `VoidX`) => a -> ar@
@@ -139,7 +140,7 @@ type family Deq (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
   Deq ar (X a  .: as   ) br (X XY .: VoidX) d =  Deq ar (X a .: as   ) br br (d - 1)
   Deq ar (X a  .: as   ) br (X XY .: bs   ) d =  Impossible XY
   Deq ar (X a  .: as   ) br (X b  .: VoidX) d = 'False
-  Deq ar (X a  .: as   ) br (X b  .: bs   ) d =  (X a == X b) :&& Deq ar as br bs (d)
+  Deq ar (X a  .: as   ) br (X b  .: bs   ) d =  (X a == X b) && Deq ar as br bs (d)
   Deq ar (X a  .: as   ) br (  b  .: VoidX) d = 'False
   Deq ar (X a  .: as   ) br (  b  .: bs   ) d = 'False
   Deq ar (  a  .: VoidX) br (X XY .: VoidX) d =  Deq ar (a .: VoidX) br br (d - 1)
@@ -153,6 +154,6 @@ type family Deq (ar :: Type) (a :: Type) (br :: Type) (b :: Type) (d :: Nat) :: 
   Deq ar (  a  .: as   ) br (X b  .: VoidX) d = 'False
   Deq ar (  a  .: as   ) br (X b  .: bs   ) d = 'False
   Deq ar (  a  .: as   ) br (  b  .: VoidX) d = 'False
-  Deq ar (  a  .: as   ) br (  b  .: bs   ) d =  Deq ar a br b (d) :&& Deq ar as br bs (d)
+  Deq ar (  a  .: as   ) br (  b  .: bs   ) d =  Deq ar a br b (d) && Deq ar as br bs (d)
   Deq ar (  a          ) br (  b          ) 0 = 'False
 

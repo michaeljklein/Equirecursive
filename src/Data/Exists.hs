@@ -16,10 +16,9 @@ type family ToStar (a :: k) :: * where
 
 type family Constraints (a :: k0) (b :: k) = (c :: Constraint) where
   Constraints (a  :: k  -> Constraint) (b :: k) = a (b :: k)
-  Constraints (a  ::       Constraint) (b :: k) = a
-  Constraints (a0 .: a1              ) (b :: k) = (Constraints a0 (b :: k), Constraints a1 (b :: k))
+  Constraints (a0 :. a1              ) (b :: k) = (Constraints a0 (b :: k), Constraints a1 (b :: k))
 
-data ExistsK k (c :: k -> Constraint) = forall (a :: k). Constraints c a => ExistsK { getExistsK :: X a }
+data ExistsK k (c :: k0) = forall (a :: k). Constraints c a => ExistsK { getExistsK :: X a }
 
 type Exists c = ExistsK Type c
 

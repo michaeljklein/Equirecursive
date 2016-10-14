@@ -10,7 +10,7 @@ import Data.X
 import GHC.TypeLits( ErrorMessage(..), TypeError )
 import Data.Type.Equality
 import Data.Lifted
-
+import Data.Type.Bool
 
 -- | Check whether a type is atomic
 type family IsAtom (a :: k) :: Bool where
