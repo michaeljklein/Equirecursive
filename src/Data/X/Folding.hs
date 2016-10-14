@@ -24,6 +24,20 @@ data Passes = Passes deriving (Eq, Ord, Show)
 -- testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> Passes
 -- testNonAtom (OfKind x) (OfKind y) = testNonAtom_ x y
 -- testNonAtom_ :: X (a :: k0 -> k1) -> X (b :: k0) -> TestNonAtom a b
+--
+-- Here's a use for template haskell:
+-- $(kindFamilyTest ''TestNonAtom)
+
+data OfKind k = forall (a :: k). OfKind { getOfKind :: X a }
+data APasses = forall (a :: Passes). APasses { getAPasses :: X a }
+
+testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> APasses
+testNonAtom (OfKind x) (OfKind y) = APasses (testNonAtom_ x y)
+
+-- | Should be able to make a classy version of this, except that type families
+-- can't be passed to other type families without evaluation.
+testNonAtom_ :: X (a :: k0 -> k1) -> X (b :: k0) -> X (TestNonAtom a b)
+testNonAtom_ _ _ = (undefined :: X 'Passes)
 
 -- | Results in a `TypeError` if `False`
 type family Assert (b :: Bool) (e :: ErrorMessage) :: Passes where

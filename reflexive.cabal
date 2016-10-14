@@ -35,6 +35,9 @@ library
                      , Data.Equirecursive.Test
                      , Data.Lifted
                      , Control.Lens.Utils
+                     , Data.Type.Test
+                     , Data.Type.Test.Internal
+                     , Data.Type.Test.TH
   ghc-options:         -Wall -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3
@@ -47,6 +50,9 @@ library
                      , profunctors >= 5.2
                      , containers >= 0.5.7.1
                      , ghc-prim
+                     , QuickCheck >= 2.8.2
+                     , deepseq >= 1.4.2.0
+                     , hashable >= 1.2.4.0
   default-language:    Haskell2010
   default-extensions:  ConstraintKinds
                      , DataKinds

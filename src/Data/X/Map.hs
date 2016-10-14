@@ -48,7 +48,8 @@ tb = Node 1 [Node 2 [Node 1 [Node 2 [Node 7 []], Node 3 [Node 4 [Node 9 [], Node
 type family TestFind (c :: k0 -> k1) (d :: k1 -> k2) (e :: k0) :: Bool where
   TestFind c d e = ElemX (X (c e)) (Find c (d (c e)))
 
-
+-- type family TestFind1 (c :: k0 -> k1) (d :: k1 -> k2) (e :: k0) :: Bool where
+--   TestFind1 c d e = ?
 
 type family Find (a :: k) (b :: k1) :: * where
   Find a b = FindX (UnfoldX a) (UnfoldX b)
