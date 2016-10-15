@@ -8,10 +8,10 @@ module Data.Type.Test where
 -- import GHC.TypeLits
 
 
--- | Check whether a type is atomic
-type family IsAtom (a :: k) :: Bool where
-  IsAtom (c a) = 'False
-  IsAtom    a  = 'True
+-- -- | Check whether a type is atomic
+-- type family IsAtom (a :: k) :: Bool where
+--   IsAtom (c a) = 'False
+--   IsAtom    a  = 'True
 
 -- testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> APasses
 -- testNonAtom (OfKind x) (OfKind y) = APasses (testNonAtom_ x y)

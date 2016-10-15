@@ -20,31 +20,86 @@ import Test.QuickCheck.Poly
 import Control.Comonad
 import Data.Foldable (toList)
 import Data.Default
+import Control.Monad.Trans.State
+import Control.Monad.Trans.Class
+import Data.Default.Orphans
 
+import Control.Lens.Setter
+import Control.Lens.Internal.Setter
+-- import Data.X.Folding
+import Data.Type.Bool
+
+
+-- class SetResultAtom s t a b atom => SetResult s t a b | s -> a, t -> b, s b -> t, t a -> s where
+--   setResult :: Setter s t a b
+--   setResult = setResultAtom
+
+-- instance SetResultAtom s t a b atom => SetResult s t a b
+
+type family IsFunction (a :: Type) :: Bool where
+  IsFunction ((->) a b) = 'True
+  IsFunction (     a  ) = 'False
+
+type family FunctionDepth (a :: Type) :: Nat where
+  FunctionDepth ((->) a b) = 1 + FunctionDepth b
+  FunctionDepth (     a  ) = 0
+
+type family ResultOf (a :: Type) :: Type where
+  ResultOf ((->) a b) = ResultOf b
+  ResultOf (     a  ) =          a
+
+type family MapResult (r :: Type) (a :: Type) :: Type where
+  MapResult r ((->) a b) = a -> MapResult r b
+  MapResult r (     a  ) =                r
+
+class ((s == a) ~ eq1, (t == b) ~ eq2) => SetResult s t a b eq1 eq2 | s -> a, t -> b, s b -> t, t a -> s where
+  setResult :: Setter s t a b
+
+instance SetResult s t s t 'True 'True where
+  setResult = id
+
+instance ((s == a) ~ 'True, (t == b) ~ 'False, TypeError ('Text "err")) => SetResult s t a b 'True 'False where
+  setResult = error "invalid SetResult instance"
+
+instance ((s == a) ~ 'False, (t == b) ~ 'True, TypeError ('Text "err")) => SetResult s t a b 'False 'True where
+  setResult = error "invalid SetResult instance"
+
+instance (((c -> s) == a) ~ 'False, ((c -> t) == b) ~ 'False, SetResult s t a b 'True 'True) => SetResult (c -> s) (c -> t) a b 'False 'False where
+  setResult f x = pure $ (untainted . setResult f) . x
+
+-- class SetResult s t a b | s -> a, t -> b, s b -> t, t a -> s where
+--   setResult :: Setter s t a b
+
+-- instance SetResult s t a b eq => SetResult (c -> s) (c -> t) a b 'False where
+--   setResult f x = pure $ (untainted . setResult f) . x
+
+-- instance SetResult s t s t 'True where
+--   setResult = id
+
+
+-- (./) :: (a -> b) -> s -> t
+-- (./) =
+
+-- λ> :t (.)
+-- (.) ∷ (b → c) → (a → b) → a → c
+
+-- λ> :t (.) . (.)
+-- (.) . (.) ∷ (b → c) → (a → a1 → b) → a → a1 → c
+
+-- λ> :t (.) . (.) . (.)
+-- (.) . (.) . (.) ∷ (b → c) → (a → a1 → a2 → b) → a → a1 → a2 → c
+
+-- λ> :t (.) . (.) . (.) . (.)
+-- (.) . (.) . (.) . (.)
+--   ∷ (b → c) → (a → a1 → a2 → a3 → b) → a → a1 → a2 → a3 → c
 
 -- TODO: add support for monad transformers
 
+-- | The maximum depth of generated types
+-- TODO: Tune
+maxDepth :: Int
+maxDepth = 4
 
-instance Default Bool where
-  def = False
-instance Default a => Default (Either a t) where
-  def = Left def
-instance Default Char where
-  def = '\0'
-instance Default Natural where
-  def = 0
-instance Default A where
-  def = A 0
-instance Default B where
-  def = B 0
-instance Default C where
-  def = C 0
-instance Default OrdA where
-  def = OrdA 0
-instance Default OrdB where
-  def = OrdB 0
-instance Default OrdC where
-  def = OrdC 0
 
 
 -- | Nice types for nice type families
@@ -161,6 +216,21 @@ instance (Nice a, Nice b, Nice c, Nice d) => ShrinkType (a, b, c, d) where
       xyzShrunk  = (ExistsK . return) <$> shrink (x, y, z)
       xyzwShrunk = (ExistsK . return) <$> shrink (x, y, z, w)
 
+type GenS a = StateT Int Gen a
+
+arbitraryS :: Arbitrary a => GenS a
+arbitraryS = decrementS >> lift arbitrary
+
+decrementS :: GenS ()
+decrementS = modify (+ (-1))
+
+oneofS :: [GenS a] -> GenS a
+oneofS xs = lift (choose (0, length xs - 1)) >>= (xs !!)
+
+elementS :: [a] -> GenS a
+elementS = lift . elements
+
+
 
 -- | Includes the types:
 -- `Bool` `Char`, `Double`, `Float`, `Int`,
@@ -169,7 +239,7 @@ instance (Nice a, Nice b, Nice c, Nice d) => ShrinkType (a, b, c, d) where
 -- `Word16`, `Word32`, `Word64`, `()`,
 -- `Natural`, `IntSet`, `OrdC`, `OrdB`,
 -- `OrdA`, `C`, `B`, and `A`.
-arbitraryExistsK0 :: [ Gen (Exists Nice)
+arbitraryExistsK0 :: [ GenS (Exists Nice)
                      ]
 arbitraryExistsK0 = [ existsX0 (Proxy :: Proxy Bool)
                     , existsX0 (Proxy :: Proxy Char)
@@ -200,8 +270,8 @@ arbitraryExistsK0 = [ existsX0 (Proxy :: Proxy Bool)
 
 -- | Includes the types:
 -- `X`, `[]`, `Maybe`, and `Seq`.
-arbitraryExistsK1 :: [ Gen (Exists Nice)
-                     ->Gen (Exists Nice)
+arbitraryExistsK1 :: [ GenS (Exists Nice)
+                     ->GenS (Exists Nice)
                      ]
 arbitraryExistsK1 = map (=<<) [ (\(ExistsK x0 :: Exists Nice) -> existsX1 (Proxy :: Proxy X    ) x0)
                             , (\(ExistsK x0 :: Exists Nice) -> existsX1 (Proxy :: Proxy []   ) x0)
@@ -211,9 +281,9 @@ arbitraryExistsK1 = map (=<<) [ (\(ExistsK x0 :: Exists Nice) -> existsX1 (Proxy
 
 -- | Includes the types:
 -- `(,)`, `(->)`, and `Either`.
-arbitraryExistsK2 :: [ Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
+arbitraryExistsK2 :: [ GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
                      ]
 arbitraryExistsK2 = map bind2 [ (\(ExistsK x0 :: Exists Nice)
                                   (ExistsK x1 :: Exists Nice) -> existsX2 (Proxy :: Proxy (,)) x0 x1)
@@ -225,10 +295,10 @@ arbitraryExistsK2 = map bind2 [ (\(ExistsK x0 :: Exists Nice)
 
 -- | Includes the type:
 -- `(,,)`.
-arbitraryExistsK3 :: [ Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
+arbitraryExistsK3 :: [ GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
                      ]
 arbitraryExistsK3 = map bind3 [ (\(ExistsK x0 :: Exists Nice)
                                   (ExistsK x1 :: Exists Nice)
@@ -237,11 +307,11 @@ arbitraryExistsK3 = map bind3 [ (\(ExistsK x0 :: Exists Nice)
 
 -- | Includes the type:
 -- `(,,,)`.
-arbitraryExistsK4 :: [ Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
-                     ->Gen (Exists Nice)
+arbitraryExistsK4 :: [ GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
+                     ->GenS (Exists Nice)
                      ]
 arbitraryExistsK4 = map bind4 [ (\(ExistsK x0 :: Exists Nice)
                                   (ExistsK x1 :: Exists Nice)
@@ -250,53 +320,53 @@ arbitraryExistsK4 = map bind4 [ (\(ExistsK x0 :: Exists Nice)
                               ]
 
 -- | Constrain the instance of `arbitrary` using a `Proxy`
-arbitraryX0 :: Nice t => Proxy t -> Gen (X t)
-arbitraryX0 _ = arbitrary
+arbitraryX0 :: Nice t => Proxy t -> GenS (X t)
+arbitraryX0 _ = arbitraryS
 
 -- | Constrain the instance of `arbitrary` using a `Proxy`
 -- and an `X`.
-arbitraryX1 :: Nice (t a) => Proxy t -> X a -> Gen (X (t a))
-arbitraryX1 _ _ = arbitrary
+arbitraryX1 :: Nice (t a) => Proxy t -> X a -> GenS (X (t a))
+arbitraryX1 _ _ = arbitraryS
 
 -- | See `arbitraryX1`
-arbitraryX2 :: Nice (t a b) => Proxy t -> X a -> X b -> Gen (X (t a b))
-arbitraryX2 _ _ _ = arbitrary
+arbitraryX2 :: Nice (t a b) => Proxy t -> X a -> X b -> GenS (X (t a b))
+arbitraryX2 _ _ _ = arbitraryS
 
 -- | See `arbitraryX1`
-arbitraryX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> Gen (X (t a b c))
-arbitraryX3 _ _ _ _ = arbitrary
+arbitraryX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> GenS (X (t a b c))
+arbitraryX3 _ _ _ _ = arbitraryS
 
 -- | See `arbitraryX1`
-arbitraryX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> Gen (X (t a b c d))
-arbitraryX4 _ _ _ _ _ = arbitrary
+arbitraryX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> GenS (X (t a b c d))
+arbitraryX4 _ _ _ _ _ = arbitraryS
 
 -- | See `arbitraryX1`
-arbitraryX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> Gen (X (t a b c d e))
-arbitraryX5 _ _ _ _ _ _ = arbitrary
+arbitraryX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> GenS (X (t a b c d e))
+arbitraryX5 _ _ _ _ _ _ = arbitraryS
 
 -- | Generate an @`ExistsK` `Type` `Nice`@ using a `Proxy`
-existsX0 :: Nice t => Proxy t -> Gen (Exists Nice)
+existsX0 :: Nice t => Proxy t -> GenS (Exists Nice)
 existsX0 t = ExistsK <$> arbitraryX0 t
 
 -- | Generate an @`ExistsK` `Type` `Nice`@ using a `Proxy`
 -- and an `X`.
-existsX1 :: Nice (t a) => Proxy t -> X a -> Gen (Exists Nice)
+existsX1 :: Nice (t a) => Proxy t -> X a -> GenS (Exists Nice)
 existsX1 t x0 = ExistsK <$> arbitraryX1 t x0
 
 -- | See `existsX1`
-existsX2 :: Nice (t a b) => Proxy t -> X a -> X b -> Gen (Exists Nice)
+existsX2 :: Nice (t a b) => Proxy t -> X a -> X b -> GenS (Exists Nice)
 existsX2 t x0 x1 = ExistsK <$> arbitraryX2 t x0 x1
 
 -- | See `existsX1`
-existsX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> Gen (Exists Nice)
+existsX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> GenS (Exists Nice)
 existsX3 t x0 x1 x2 = ExistsK <$> arbitraryX3 t x0 x1 x2
 
 -- | See `existsX1`
-existsX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> Gen (Exists Nice)
+existsX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> GenS (Exists Nice)
 existsX4 t x0 x1 x2 x3 = ExistsK <$> arbitraryX4 t x0 x1 x2 x3
 
 -- | See `existsX1`
-existsX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> Gen (Exists Nice)
+existsX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> GenS (Exists Nice)
 existsX5 t x0 x1 x2 x3 x4 = ExistsK <$> arbitraryX5 t x0 x1 x2 x3 x4
 
 -- | If `(=<<)` took another argument
@@ -316,18 +386,25 @@ bind5 :: Monad m => (a -> b -> c -> d -> e -> m f) -> m a -> m b -> m c -> m d -
 bind5 = (((((join .) .) .) .) .) . liftM5
 
 
+arbitraryNice :: GenS (Exists Nice)
+arbitraryNice = do
+  n <- get
+  if n < 1
+     then    join $ elementS arbitraryExistsK0
+  else do
+    decrementS
+    oneofS [ join $ elementS arbitraryExistsK0
+           , join $ elementS arbitraryExistsK1 <*> return arbitraryNice
+           , join $ elementS arbitraryExistsK2 <*> return arbitraryNice <*> return arbitraryNice
+           , join $ elementS arbitraryExistsK3 <*> return arbitraryNice <*> return arbitraryNice <*> return arbitraryNice
+           , join $ elementS arbitraryExistsK4 <*> return arbitraryNice <*> return arbitraryNice <*> return arbitraryNice <*> return arbitraryNice
+           ]
+
 -- | This recursively generates instances of @`ExistsK` `Type` `Nice`@,
 -- using `arbitraryExistsK0`, `arbitraryExistsK1`, etc. Shrinking is
 -- accomplished through `ShrinkType`.
 instance Arbitrary (Exists Nice) where
-  arbitrary = oneof [
-      join $ elements arbitraryExistsK0
-    , join $ elements arbitraryExistsK1 <*> return arbitrary
-    , join $ elements arbitraryExistsK2 <*> return arbitrary <*> return arbitrary
-    , join $ elements arbitraryExistsK3 <*> return arbitrary <*> return arbitrary <*> return arbitrary
-    , join $ elements arbitraryExistsK4 <*> return arbitrary <*> return arbitrary <*> return arbitrary <*> return arbitrary
-    ]
-
+  arbitrary = fst <$> runStateT arbitraryNice maxDepth
   shrink (ExistsK x) = typeShrink x
 
 -- | Given `Nice`, this instance is a piece of cake.

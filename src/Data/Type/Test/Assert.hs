@@ -1,6 +1,26 @@
 module Data.Type.Test.Assert where
 
 
+import Control.Monad
+import Data.Exists
+import Data.IntSet (IntSet)
+import Data.Kind
+import Data.Proxy
+import Data.Sequence (Seq)
+import Data.Type.Equality
+import Data.Typeable
+import Data.Word
+import Data.X
+import GHC.TypeLits
+import Numeric.Natural
+import Test.QuickCheck
+import Test.QuickCheck.Poly
+import Control.Comonad
+import Data.Foldable (toList)
+import Data.Default
+
+
+
 -- | Unit type with @'`Passes` :: `Passes`@ for assertions.
 data Passes = Passes deriving (Eq, Ord, Show)
 
