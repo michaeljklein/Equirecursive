@@ -37,6 +37,10 @@ library
                      , Data.Type.Test
                      , Data.Type.Test.Assert
                      , Data.Type.Test.Internal
+                     , Data.Type.Test.ShrinkType
+                     , Data.Type.Test.Star
+                     , Data.Type.Test.Star.Utils
+                     , Test.QuickCheck.GenS
                      , Data.Type.Test.TH
                      , Data.X.Folding
                      , Data.X.Map
@@ -55,6 +59,7 @@ library
                      , QuickCheck >= 2.8.2
                      , deepseq >= 1.4.2.0
                      , hashable >= 1.2.4.0
+                     , random >= 1.1
   default-language:    Haskell2010
   default-extensions:  ConstraintKinds
                      , DataKinds

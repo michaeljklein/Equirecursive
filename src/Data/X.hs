@@ -313,7 +313,7 @@ instance HashableX (X a) star => Hashable (X a) where
   hashWithSalt = hashWithSaltX
   hash = hashX
 
-
+-- | Just uses `X` as a wrapper
 instance IsString a => IsString (X (a :: *)) where
   fromString = return . fromString
 
@@ -406,6 +406,7 @@ instance Foldable X where
   sum = extract
   product = extract
 
+-- | Trivial instance
 instance Traversable X where
   traverse f x = return <$> f (extract x)
   sequenceA x = return <$> extract x
