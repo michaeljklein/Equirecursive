@@ -30,10 +30,11 @@ import Data.Type.Test.Star
 
 -- TODO: add support for monad transformers
 
--- | The maximum depth of generated types
--- TODO: Tune
+-- | The maximum (total) depth of generated types.
+-- On my computer, this allows GHCi to generate
+-- and print about @1000@ types/sec
 maxDepth :: Int
-maxDepth = 4
+maxDepth = 30
 
 
 -- | This recursively generates instances of @`ExistsK` `Type` `Nice`@,
@@ -49,8 +50,28 @@ instance CoArbitrary (Exists Nice) where
   coarbitrary (ExistsK x) = coarbitrary x
 
 
+-- | Given `NiceX`, this instance is a piece of cake.
 instance CoArbitrary (ExistsK (Type -> Type) NiceX) where
   coarbitrary (ExistsK x) = coarbitrary x
+
+-- | Given `NiceX`, this instance is a piece of cake.
+instance CoArbitrary (ExistsK (Type -> Type -> Type) NiceX) where
+  coarbitrary (ExistsK x) = coarbitrary x
+
+-- | Given `NiceX`, this instance is a piece of cake.
+instance CoArbitrary (ExistsK (Type -> Type -> Type -> Type) NiceX) where
+  coarbitrary (ExistsK x) = coarbitrary x
+
+-- | Given `NiceX`, this instance is a piece of cake.
+instance CoArbitrary (ExistsK (Type -> Type -> Type -> Type -> Type) NiceX) where
+  coarbitrary (ExistsK x) = coarbitrary x
+
+
+-- | This performs explicit type application within `X`. It's sole
+-- purpose is to orient operations within `ExistsK`.
+xApp :: NiceX (a b) => X (a :: Type -> k) -> X (b :: Type) -> X (a b :: k)
+xApp _ _ = def
+
 
 instance Arbitrary (ExistsK (Type -> Type) NiceX) where
   arbitrary = oneof . concat $ [ return <$> arbitraryExistsKTypeType0
@@ -123,10 +144,6 @@ instance Arbitrary (ExistsK (Type -> Type -> Type -> Type -> Type) NiceX) where
 arbitraryExistsTypeTypeTypeTypeType0 :: [ ExistsK (Type -> Type -> Type -> Type -> Type) NiceX ]
 arbitraryExistsTypeTypeTypeTypeType0 =  [ ExistsK (def :: X (,,,))
                                         ]
-
-xApp :: NiceX (a b) => X (a :: Type -> k) -> X (b :: Type) -> X (a b :: k)
-xApp _ _ = def
-
 
 
 
