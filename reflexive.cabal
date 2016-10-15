@@ -37,6 +37,7 @@ library
                      , Control.Lens.Utils
                      , Data.Type.Test
                      , Data.Type.Test.Internal
+                     , Data.Type.Test.Assert
                      , Data.Type.Test.TH
   ghc-options:         -Wall -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
