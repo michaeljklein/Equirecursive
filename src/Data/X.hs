@@ -406,5 +406,8 @@ instance Foldable X where
   sum = extract
   product = extract
 
+instance Traversable X where
+  traverse f x = return <$> f (extract x)
+  sequenceA x = return <$> extract x
 
 

@@ -25,121 +25,317 @@ import GHC.TypeLits
 import Numeric.Natural
 import Test.QuickCheck
 import Test.QuickCheck.Poly
-                    -- , existsGen (Proxy :: Proxy (X Version))
-                    -- , existsGen (Proxy :: Proxy (X All))
-                    -- , existsGen (Proxy :: Proxy (X Any))
+import Control.Comonad
+import Data.Foldable (toList)
 
 
 -- | Unit type with @'`Passes` :: `Passes`@ for assertions.
 data Passes = Passes deriving (Eq, Ord, Show)
 
-inX :: X a
-inX = X undefined
 
-existsGen :: forall k0 k (c :: k0) (a :: k). (ArbitraryX (X a) (IsStarX (X a)), Constraints c a) => Proxy (X a) -> Gen (ExistsK k c)
-existsGen p = fmap ExistsK $ flip asProxyTypeOf p <$> arbitrary
+-- | Nice types for type families
+class    (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a) => Nice a
 
-xApp :: Proxy (X t) -> Proxy (X a) -> Proxy (X (t a))
-xApp _ _ = Proxy
+-- | This instance makes `Nice` a class synonym.
+instance (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a) => Nice a
+
+-- | Don't only recursively shrink the value, but also the type.
+-- Made possible by @`ExistsK` `Type` `Nice`@'s truly.
+class ShrinkType (a :: Type) where
+  typeShrink :: a -> [ExistsK Type Nice]
 
 
-----------------------------------------------------------------------------------------------------------------------------------
--- The following four functions represent the steps needed to
--- transform any existential Nice type generator to an
--- existential Nice list of that type generator.
--- This should work for all unary types that only require Nice.
+instance ShrinkType Bool where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Char where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Double where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Float where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Int where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Int8 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Int16 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Int32 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Int64 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Integer where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Ordering where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Word where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Word8 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Word16 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Word32 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Word64 where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType () where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType Natural where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType IntSet where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType OrdC where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType OrdB where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType OrdA where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType C where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType B where typeShrink = fmap ExistsK . shrink . return
+instance ShrinkType A where typeShrink = fmap ExistsK . shrink . return
 
--- arb1 :: Nice a => X a -> Gen (X [a])
--- arb1 _ = arbitrary
 
--- arb2 :: Nice a => X a -> Gen (ExistsK Type Nice)
--- arb2 = fmap existsK . arb1
+-- | This returns the shrinks of @a@ as well as the shrinks of @`X` a@.
+-- In other words, it tries shrinking both the value and the type.
+instance ShrinkType a => ShrinkType (X a) where
+  typeShrink x = typeShrink (extract x) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> X b) y)])
 
--- arb3 :: ExistsK Type Nice -> Gen (ExistsK Type Nice)
--- arb3 = (\(ExistsK x :: ExistsK Type Nice) -> arb2 x)
+-- | First shrinks and returns all elements then shrinks and returns the whole list
+instance Nice a => ShrinkType [a] where
+  typeShrink x = typeShrunk ++ listShrunk
+    where
+      typeShrunk = join (typeShrink <$> x) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
+      listShrunk = (ExistsK . return) <$> shrink x
 
--- arb4 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- arb4 x = x >>= arb3
+-- | Shrinks the value and type if `Just`
+instance ShrinkType a => ShrinkType (Maybe a) where
+  typeShrink (Just  x) = typeShrink x >>= (\(ExistsK y) -> [ExistsK y, ExistsK (Just <$> y)])
+  typeShrink (Nothing) = []
 
--- arb5 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- arb5 x = x >>= (\(ExistsK x :: ExistsK Type Nice) -> (fmap existsK . (const arbitrary :: Nice a => X a -> Gen (X [a]))) x)
+-- | See the `[]` instance
+instance Nice a => ShrinkType (Seq a) where
+  typeShrink x = typeShrunk ++ seqShrunk
+    where
+      typeShrunk = join (toList (typeShrink <$> x)) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
+      seqShrunk  = (ExistsK . return) <$> shrink x
 
--- arb6 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- arb6 x = x >>= (\(ExistsK x :: ExistsK Type Nice) -> (fmap existsK . (const arbitrary :: Nice a => X a -> Gen (X (Maybe a)))) x)
+-- | Returns @a@, @b@, @(a, b)@, each shrunk
+instance (Nice a, Nice b) => ShrinkType (a, b) where
+  typeShrink (x, y) = xShrunk ++ yShrunk ++ xyShrunk
+    where
+      xShrunk  = (ExistsK . return) <$> shrink x
+      yShrunk  = (ExistsK . return) <$> shrink y
+      xyShrunk = (ExistsK . return) <$> shrink (x, y)
 
--- -- arb7 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- -- arb7 x = x >>= (\(ExistsK x :: ExistsK Type Nice) -> (fmap existsK . (const arbitrary :: Nice a => X a -> Gen (X (NonEmptyList a)))) x)
+-- | Shrinks the type of whichever of `Left` or `Right` inhabits it, then the whole
+instance (Nice a, Nice b) => ShrinkType (Either a b) where
+  typeShrink x = oneShrunk ++ bothShrunk
+    where
+      oneShrunk  = either (fmap (ExistsK . return) . shrink) (fmap (ExistsK . return) . shrink) x
+      bothShrunk = (ExistsK . return) <$> shrink x
 
--- arb8 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- arb8 x = x >>= (\(ExistsK x :: ExistsK Type Nice) -> (fmap existsK . (const arbitrary :: Nice a => X a -> Gen (X (X a)))) x)
+-- | Returns no shrinks
+instance ShrinkType (a -> b) where
+  typeShrink _ = []
 
--- arb9 :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- arb9 = undefined (,)
+-- | Shrinks all removals of a single element then whe whole tuple
+instance (Nice a, Nice b, Nice c) => ShrinkType (a, b, c) where
+  typeShrink (x, y, z) = xyShrunk ++ yzShrunk ++ xzShrunk ++ xyzShrunk
+    where
+      xyShrunk  = (ExistsK . return) <$> shrink (x, y)
+      yzShrunk  = (ExistsK . return) <$> shrink (y, z)
+      xzShrunk  = (ExistsK . return) <$> shrink (x, z)
+      xyzShrunk = (ExistsK . return) <$> shrink (x, y, z)
 
-----------------------------------------------------------------------------------------------------------------------------------
+-- | Shrinks all removals of a single element then whe whole tuple
+instance (Nice a, Nice b, Nice c, Nice d) => ShrinkType (a, b, c, d) where
+  typeShrink (x, y, z, w) = yzwShrunk ++ xzwShrunk ++ xywShrunk ++ xyzShrunk ++ xyzwShrunk
+    where
+      yzwShrunk  = (ExistsK . return) <$> shrink (y, z, w)
+      xzwShrunk  = (ExistsK . return) <$> shrink (x, z, w)
+      xywShrunk  = (ExistsK . return) <$> shrink (x, y, w)
+      xyzShrunk  = (ExistsK . return) <$> shrink (x, y, z)
+      xyzwShrunk = (ExistsK . return) <$> shrink (x, y, z, w)
 
-arbitraryExistsK1 :: [Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)]
+
+-- | Includes the types:
+-- `Bool` `Char`, `Double`, `Float`, `Int`,
+-- `Int8`, `Int16`, `Int32`, `Int64`,
+-- `Integer`, `Ordering`, `Word`, `Word8`,
+-- `Word16`, `Word32`, `Word64`, `()`,
+-- `Natural`, `IntSet`, `OrdC`, `OrdB`,
+-- `OrdA`, `C`, `B`, and `A`.
+arbitraryExistsK0 :: [ Gen (ExistsK Type Nice)
+                     ]
+arbitraryExistsK0 = [ existsX0 (Proxy :: Proxy Bool)
+                    , existsX0 (Proxy :: Proxy Char)
+                    , existsX0 (Proxy :: Proxy Double)
+                    , existsX0 (Proxy :: Proxy Float)
+                    , existsX0 (Proxy :: Proxy Int)
+                    , existsX0 (Proxy :: Proxy Int8)
+                    , existsX0 (Proxy :: Proxy Int16)
+                    , existsX0 (Proxy :: Proxy Int32)
+                    , existsX0 (Proxy :: Proxy Int64)
+                    , existsX0 (Proxy :: Proxy Integer)
+                    , existsX0 (Proxy :: Proxy Ordering)
+                    , existsX0 (Proxy :: Proxy Word)
+                    , existsX0 (Proxy :: Proxy Word8)
+                    , existsX0 (Proxy :: Proxy Word16)
+                    , existsX0 (Proxy :: Proxy Word32)
+                    , existsX0 (Proxy :: Proxy Word64)
+                    , existsX0 (Proxy :: Proxy ())
+                    , existsX0 (Proxy :: Proxy Natural)
+                    , existsX0 (Proxy :: Proxy IntSet)
+                    , existsX0 (Proxy :: Proxy OrdC)
+                    , existsX0 (Proxy :: Proxy OrdB)
+                    , existsX0 (Proxy :: Proxy OrdA)
+                    , existsX0 (Proxy :: Proxy C)
+                    , existsX0 (Proxy :: Proxy B)
+                    , existsX0 (Proxy :: Proxy A)
+                    ]
+
+-- | Includes the types:
+-- `X`, `[]`, `Maybe`, and `Seq`.
+arbitraryExistsK1 :: [ Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ]
 arbitraryExistsK1 = map (=<<) [ (\(ExistsK x0 :: ExistsK Type Nice) -> existsX1 (Proxy :: Proxy X    ) x0)
                             , (\(ExistsK x0 :: ExistsK Type Nice) -> existsX1 (Proxy :: Proxy []   ) x0)
                             , (\(ExistsK x0 :: ExistsK Type Nice) -> existsX1 (Proxy :: Proxy Maybe) x0)
                             , (\(ExistsK x0 :: ExistsK Type Nice) -> existsX1 (Proxy :: Proxy Seq  ) x0)
                             ]
 
-arbitraryExistsK2 :: [Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)]
-arbitraryExistsK2 = map bind2 [ (\(ExistsK x0 :: ExistsK Type Nice) (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy (,)) x0 x1)
-                              , (\(ExistsK x0 :: ExistsK Type Nice) (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy (->)) x0 x1)
-                              , (\(ExistsK x0 :: ExistsK Type Nice) (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy Either) x0 x1)
+-- | Includes the types:
+-- `(,)`, `(->)`, and `Either`.
+arbitraryExistsK2 :: [ Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ]
+arbitraryExistsK2 = map bind2 [ (\(ExistsK x0 :: ExistsK Type Nice)
+                                  (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy (,)) x0 x1)
+                              , (\(ExistsK x0 :: ExistsK Type Nice)
+                                  (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy (->)) x0 x1)
+                              , (\(ExistsK x0 :: ExistsK Type Nice)
+                                  (ExistsK x1 :: ExistsK Type Nice) -> existsX2 (Proxy :: Proxy Either) x0 x1)
                               ]
 
-arbitraryExistsK3 :: [Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)]
-arbitraryExistsK3 = map bind3 []
+-- | Includes the type:
+-- `(,,)`.
+arbitraryExistsK3 :: [ Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ]
+arbitraryExistsK3 = map bind3 [ (\(ExistsK x0 :: ExistsK Type Nice)
+                                  (ExistsK x1 :: ExistsK Type Nice)
+                                  (ExistsK x2 :: ExistsK Type Nice) -> existsX3 (Proxy :: Proxy (,,)) x0 x1 x2)
+                              ]
 
+-- | Includes the type:
+-- `(,,,)`.
+arbitraryExistsK4 :: [ Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ->Gen (ExistsK Type Nice)
+                     ]
+arbitraryExistsK4 = map bind4 [ (\(ExistsK x0 :: ExistsK Type Nice)
+                                  (ExistsK x1 :: ExistsK Type Nice)
+                                  (ExistsK x2 :: ExistsK Type Nice)
+                                  (ExistsK x3 :: ExistsK Type Nice) -> existsX4 (Proxy :: Proxy (,,,)) x0 x1 x2 x3)
+                              ]
 
+-- | Constrain the instance of `arbitrary` using a `Proxy`
+arbitraryX0 :: Nice t => Proxy t -> Gen (X t)
+arbitraryX0 _ = arbitrary
+
+-- | Constrain the instance of `arbitrary` using a `Proxy`
+-- and an `X`.
 arbitraryX1 :: Nice (t a) => Proxy t -> X a -> Gen (X (t a))
 arbitraryX1 _ _ = arbitrary
 
+-- | See `arbitraryX1`
 arbitraryX2 :: Nice (t a b) => Proxy t -> X a -> X b -> Gen (X (t a b))
 arbitraryX2 _ _ _ = arbitrary
 
+-- | See `arbitraryX1`
 arbitraryX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> Gen (X (t a b c))
 arbitraryX3 _ _ _ _ = arbitrary
 
+-- | See `arbitraryX1`
 arbitraryX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> Gen (X (t a b c d))
 arbitraryX4 _ _ _ _ _ = arbitrary
 
+-- | See `arbitraryX1`
 arbitraryX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> Gen (X (t a b c d e))
 arbitraryX5 _ _ _ _ _ _ = arbitrary
 
+-- | Generate an @`ExistsK` `Type` `Nice`@ using a `Proxy`
+existsX0 :: Nice t => Proxy t -> Gen (ExistsK Type Nice)
+existsX0 t = existsK <$> arbitraryX0 t
+
+-- | Generate an @`ExistsK` `Type` `Nice`@ using a `Proxy`
+-- and an `X`.
 existsX1 :: Nice (t a) => Proxy t -> X a -> Gen (ExistsK Type Nice)
 existsX1 t x0 = existsK <$> arbitraryX1 t x0
 
+-- | See `existsX1`
 existsX2 :: Nice (t a b) => Proxy t -> X a -> X b -> Gen (ExistsK Type Nice)
 existsX2 t x0 x1 = existsK <$> arbitraryX2 t x0 x1
 
+-- | See `existsX1`
 existsX3 :: Nice (t a b c) => Proxy t -> X a -> X b -> X c -> Gen (ExistsK Type Nice)
 existsX3 t x0 x1 x2 = existsK <$> arbitraryX3 t x0 x1 x2
 
+-- | See `existsX1`
 existsX4 :: Nice (t a b c d) => Proxy t -> X a -> X b -> X c -> X d -> Gen (ExistsK Type Nice)
 existsX4 t x0 x1 x2 x3 = existsK <$> arbitraryX4 t x0 x1 x2 x3
 
+-- | See `existsX1`
 existsX5 :: Nice (t a b c d e) => Proxy t -> X a -> X b -> X c -> X d -> X e -> Gen (ExistsK Type Nice)
 existsX5 t x0 x1 x2 x3 x4 = existsK <$> arbitraryX5 t x0 x1 x2 x3 x4
 
+-- | If `(=<<)` took another argument
 bind2 :: Monad m => (a -> b -> m c) -> m a -> m b -> m c
 bind2 = ((join .) .) . liftM2
 
+-- | See `bind2`
 bind3 :: Monad m => (a -> b -> c -> m d) -> m a -> m b -> m c -> m d
 bind3 = (((join .) .) .) . liftM3
 
+-- | See `bind2`
 bind4 :: Monad m => (a -> b -> c -> d -> m e) -> m a -> m b -> m c -> m d -> m e
 bind4 = ((((join .) .) .) .) . liftM4
 
+-- | See `bind2`
 bind5 :: Monad m => (a -> b -> c -> d -> e -> m f) -> m a -> m b -> m c -> m d -> m e -> m f
 bind5 = (((((join .) .) .) .) .) . liftM5
 
+
+-- | This recursively generates instances of @`ExistsK` `Type` `Nice`@,
+-- using `arbitraryExistsK0`, `arbitraryExistsK1`, etc. Shrinking is
+-- accomplished through `ShrinkType`.
+instance Arbitrary (ExistsK Type Nice) where
+  arbitrary = oneof [
+      join $ elements arbitraryExistsK0
+    , join $ elements arbitraryExistsK1 <*> return arbitrary
+    , join $ elements arbitraryExistsK2 <*> return arbitrary <*> return arbitrary
+    , join $ elements arbitraryExistsK3 <*> return arbitrary <*> return arbitrary <*> return arbitrary
+    , join $ elements arbitraryExistsK4 <*> return arbitrary <*> return arbitrary <*> return arbitrary <*> return arbitrary
+    ]
+
+  shrink (ExistsK x) = typeShrink x
+
+-- | Given `Nice`, this instance is a piece of cake.
+-- Go ahead, check the source if you don't believe me.
+instance CoArbitrary (ExistsK Type Nice) where
+  coarbitrary (ExistsK x) = coarbitrary x
+
+
+
+
+-- | This is probably superflous, but I think it might not be.
+data APasses = forall (a :: Passes). Typeable a => APasses { getAPasses :: X a }
+
+-- | Trivial instance, mostly to make sure `APasses` is fully evaluated.
+instance Show APasses where
+  show (APasses xa) = show xa
+
+
+-- | Results in the given `TypeError` if `False`
+type family Assert (b :: Bool) (e :: ErrorMessage) :: Passes where
+  Assert 'True  e = 'Passes
+  Assert 'False e = TypeError e
+
+-- | Show two types
+type family ShowType2 (a0 :: k0) (a1 :: k1) :: ErrorMessage where
+  ShowType2 a0 a1 = 'Text "\n  " ':<>: 'ShowType a0 ':<>: 'Text "\n  " ':<>: 'ShowType a1 ':<>: 'Text "\n"
+
+-- | Results in a `TypeError` if `/=`. Reports its arguments upon error.
+type family AssertEq (a :: k) (b :: k) :: Passes where
+  AssertEq a b = Assert (a == b) ('Text "AssertEq failed with arguments:" ':<>: ShowType2 a b)
+
+
+
 -- Has to derive n to be useful. Too out sidetracking for now.
 -- class MultiCompose (n :: Nat) (as :: Type) | as -> n where
---   type ComposeResult (n :: Nat) (as :: Type) (a :: Type) :: Type
 --   (./) :: X n -> (b -> c) -> ComposeResult n as b -> ComposeResult n as c
 --   (\.) :: (b -> c) -> X n -> ComposeResult n as b -> ComposeResult n as c
 -- instance MultiCompose (1 :: Nat) (a0, a1) where
@@ -170,12 +366,6 @@ bind5 = (((((join .) .) .) .) .) . liftM5
 
 
 
--- existsGen1 :: (Nice a, Nice (t a)) => Proxy (X (t :: Type -> Type)) -> Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- existsGen1 = undefined
-
--- listGen :: Gen (ExistsK Type Nice) -> Gen (ExistsK Type Nice)
--- listGen g = undefined
-
 -- What about the far simpler template haskell solution of [Constraint] -> arbitrary types that fall under?
 -- Nah, that's currently overkill for something like this. A "real" solution would require instance chains.
 
@@ -202,117 +392,4 @@ bind5 = (((((join .) .) .) .) .) . liftM5
 
 -- Want the constraint Nice a => Nice (f a). Hmm.. One way is to instantiate the type when generated through Exists k Nice
 
-
--- It looks like CoArbitrary has exactly the "easy" types from "Arbitrary", including the main ones I want: Maybe, Either, (,), etc
-class    (Arbitrary a, CoArbitrary a, Typeable a) => Nice a
-instance (Arbitrary a, CoArbitrary a, Typeable a) => Nice a
-
-
-oneKindType :: [Gen (ExistsK Type Nice)]
-oneKindType = [ existsGen (Proxy :: Proxy (X Bool))
-              , existsGen (Proxy :: Proxy (X Char))
-              , existsGen (Proxy :: Proxy (X Double))
-              , existsGen (Proxy :: Proxy (X Float))
-              , existsGen (Proxy :: Proxy (X Int))
-              , existsGen (Proxy :: Proxy (X Int8))
-              , existsGen (Proxy :: Proxy (X Int16))
-              , existsGen (Proxy :: Proxy (X Int32))
-              , existsGen (Proxy :: Proxy (X Int64))
-              , existsGen (Proxy :: Proxy (X Integer))
-              , existsGen (Proxy :: Proxy (X Ordering))
-              , existsGen (Proxy :: Proxy (X Word))
-              , existsGen (Proxy :: Proxy (X Word8))
-              , existsGen (Proxy :: Proxy (X Word16))
-              , existsGen (Proxy :: Proxy (X Word32))
-              , existsGen (Proxy :: Proxy (X Word64))
-              , existsGen (Proxy :: Proxy (X ()))
-              , existsGen (Proxy :: Proxy (X Natural))
-              , existsGen (Proxy :: Proxy (X IntSet))
-              , existsGen (Proxy :: Proxy (X OrdC))
-              , existsGen (Proxy :: Proxy (X OrdB))
-              , existsGen (Proxy :: Proxy (X OrdA))
-              , existsGen (Proxy :: Proxy (X C))
-              , existsGen (Proxy :: Proxy (X B))
-              , existsGen (Proxy :: Proxy (X A))
-              ]
-
-
--- (CoArbitrary a, CoArbitrary b, CoArbitrary c) => CoArbitrary (a, b, c)
--- (CoArbitrary a, CoArbitrary b, CoArbitrary c, CoArbitrary d) => CoArbitrary (a, b, c, d)
--- (CoArbitrary a, CoArbitrary b, CoArbitrary c, CoArbitrary d, CoArbitrary e) => CoArbitrary (a, b, c, d, e)
-
-
--- HasResolution a => Arbitrary (Fixed a)
--- Integral a => Arbitrary (Ratio a)
--- Integral a => Arbitrary (Small a)
--- (Integral a, Bounded a) => Arbitrary (Large a)
-
--- (Arbitrary a, ShrinkState s a) => Arbitrary (Shrinking s a)
--- (Num a, Eq a, Arbitrary a) => Arbitrary (NonZero a)
--- (Num a, Ord a, Arbitrary a) => Arbitrary (NonNegative a)
--- (Num a, Ord a, Arbitrary a) => Arbitrary (Positive a)
--- (Ord a, Arbitrary a) => Arbitrary (OrderedList a)
--- (Ord a, Arbitrary a) => Arbitrary (Set a)
--- (RealFloat a, Arbitrary a) => Arbitrary (Complex a)
--- Arbitrary (f a) => Arbitrary (Alt * f a)
--- Arbitrary a => Arbitrary (Blind a)
--- Arbitrary a => Arbitrary (Const * a b)
--- Arbitrary a => Arbitrary (Constant * a b)
--- Arbitrary a => Arbitrary (Dual a)
--- Arbitrary a => Arbitrary (First a)
--- Arbitrary a => Arbitrary (Fixed a)
--- Arbitrary a => Arbitrary (Identity a)
--- Arbitrary a => Arbitrary (IntMap a)
--- Arbitrary a => Arbitrary (Last a)
--- Arbitrary a => Arbitrary (Maybe a)
--- Arbitrary a => Arbitrary (NonEmpty a)
--- Arbitrary a => Arbitrary (NonEmptyList a)
--- Arbitrary a => Arbitrary (Product a)
--- Arbitrary a => Arbitrary (Seq a)
--- Arbitrary a => Arbitrary (Shrink2 a)
--- Arbitrary a => Arbitrary (Smart a)
--- Arbitrary a => Arbitrary (Sum a)
--- Arbitrary a => Arbitrary (ZipList a)
--- Arbitrary a => Arbitrary [a]
-
--- (Arbitrary a, CoArbitrary a) => Arbitrary (Endo a)
--- (CoArbitrary a, Arbitrary b) => Arbitrary (a -> b)
--- (Arbitrary a, Arbitrary b) => Arbitrary (Either a b)
--- (Arbitrary a, Arbitrary b) => Arbitrary (a, b)
--- (Ord k, Arbitrary k, Arbitrary v) => Arbitrary (Map k v)
--- (Function a, CoArbitrary a, Arbitrary b) => Arbitrary (Fun a b)
--- (Function a, CoArbitrary a, Arbitrary b) => Arbitrary ((:->) a b)
-
--- (Arbitrary a, Arbitrary b, Arbitrary c) => Arbitrary (a, b, c)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d) => Arbitrary (a, b, c, d)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e) => Arbitrary (a, b, c, d, e)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e, Arbitrary f) => Arbitrary (a, b, c, d, e, f)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e, Arbitrary f, Arbitrary g) => Arbitrary (a, b, c, d, e, f, g)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e, Arbitrary f, Arbitrary g, Arbitrary h) => Arbitrary (a, b, c, d, e, f, g, h)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e, Arbitrary f, Arbitrary g, Arbitrary h, Arbitrary i) => Arbitrary (a, b, c, d, e, f, g, h, i)
--- (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d, Arbitrary e, Arbitrary f, Arbitrary g, Arbitrary h, Arbitrary i, Arbitrary j) => Arbitrary (a, b, c, d, e, f, g, h, i, j)
-
-
--- data OfKind k = forall (a :: k). OfKind { getOfKind :: X a } deriving (Typeable)
-
--- instance Typeable k => Show (OfKind k) where
---   show = show . typeOf
-
-data APasses = forall (a :: Passes). Typeable a => APasses { getAPasses :: X a }
-
-instance Show APasses where
-  show (APasses xa) = show xa
-
-
--- | Results in a `TypeError` if `False`
-type family Assert (b :: Bool) (e :: ErrorMessage) :: Passes where
-  Assert 'True  e = 'Passes
-  Assert 'False e = TypeError e
-
-type family ShowType2 (a0 :: k0) (a1 :: k1) :: ErrorMessage where
-  ShowType2 a0 a1 = 'Text "\n  " ':<>: 'ShowType a0 ':<>: 'Text "\n  " ':<>: 'ShowType a1 ':<>: 'Text "\n"
-
--- | Results in a `TypeError` if `/=`. Reports its arguments upon error.
-type family AssertEq (a :: k) (b :: k) :: Passes where
-  AssertEq a b = Assert (a == b) ('Text "AssertEq failed with arguments:" ':<>: ShowType2 a b)
 
