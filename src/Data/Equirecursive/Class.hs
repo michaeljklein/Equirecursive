@@ -16,6 +16,10 @@ class Pull s t a b | s -> a, t -> b, a -> s, b -> t, s b -> t, t a -> s where
   {-# INLINE push #-}
   push = unsafeCoerce
 
+  -- pullN :: X (n :: Nat) -> _
+  -- pushN :: X (n :: Nat) -> _
+
+
 
 
 -- newtype EList a = EList { getEList :: RecurseL (a, XY) }

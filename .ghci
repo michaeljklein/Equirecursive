@@ -6,3 +6,4 @@ import GHC.TypeLits
 import Data.Type.Equality
 import Data.Typeable
 import Control.Comonad
+import Data.Void

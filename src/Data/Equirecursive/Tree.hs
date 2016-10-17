@@ -5,6 +5,11 @@ import Data.Equirecursive.Class
 import Control.Lens
 import Control.Monad.Zip
 import Control.Monad
+import Data.Bitraversable
+import Data.Bifunctor
+import Data.Tree
+import Data.Tuple (swap)
+import Control.Comonad
 
 -- this :: Lens s t a b
 -- next :: Lens s t a b
@@ -12,45 +17,66 @@ import Control.Monad
 -- _+ = next
 --
 -- Basically, I need to be able to map like :: (BTree a -> BTree b) -> (a -> b) -> BTree a -> BTree b
-newtype Next f a = Next { getNext :: f a }
+-- next :: (E a -> E b) -> (a -> b) -> E a -> E b
+-- newtype Next f a = Next { getNext :: f a }
 -- instance Functor (Next BTree) where
 --   fmap f x =
 
+-- | Equirecursive tree
+newtype ETree a = ETree { getETree :: RecurseL ([XY], a) }
 
-newtype BTree a = BTree { getBTree :: RecurseL ([XY], a) }
+-- | Equirecursive forest
+type EForest a = [ETree a]
 
 
+instance Pull (ETree a) (ETree b) (EForest a, a) (EForest b, b)
 
-instance Pull (BTree a) (BTree b) (BForest a, a) (BForest a, b)
+
+instance Functor ETree where
+  fmap f = pull %~ ((_1 %~ map (fmap f)) . (_2 %~ f))
 
 
-instance Functor BTree where
-  fmap f = pull %~ ((_1 %~ fmap f) . (_2 %~ fmap f) . (_3 %~ f))
-
-instance Applicative BTree where
-  pure x = (pure x, pure x, x) ^. push
-
-  (<*>) :: BTree (a -> b) -> BTree a -> BTree b
+-- | Uses a zipping @(`<*>`)@
+instance Applicative ETree where
+  pure x = (pure (pure x), x) ^. push
   (<*>) = mzipWith ($)
 
-instance Monad BTree where
+
+instance Monad ETree where
   return = pure
 
-  (>>=) :: BTree a -> (a -> BTree b) -> BTree b
-  xs >>= f = join (fmap f xs)
-    -- where
-      -- join :: BTree (BTree a) -> BTree a
-      -- join = pull %~ ((_1 %~ join) . (_2 %~ join) . (_3 %~ join))
+  xs >>= f = (xf ++ map (>>= f) (xs ^. pull ^. _1), x) ^. push
+    where
+      (xf, x) = f (xs ^. pull ^. _2) ^. pull
 
-instance MonadZip BTree where
-  mzip :: BTree a -> BTree b -> BTree (a, b)
-  mzip x y = let ((z1, z2, z), (w1, w2, w)) = bimap (^. pull) (^. pull) (x, y) in (z1 `mzip` w1, z2 `mzip` w2, (z, w)) ^. push
 
-instance Foldable BTree where
-  foldr :: (a -> b -> b) -> b -> BTree a -> b
-  foldr = undefined
+-- | `duplicate` replaces each label with the subtree
+-- rooted at that label.
+instance Comonad ETree where
+  extract = snd . (^. pull)
 
-instance Traversable BTree where
-  sequenceA :: Applicative f => BTree (f a) -> f (BTree a)
-  sequenceA = undefined
+  duplicate x = pull %~ ((_1 %~ fmap duplicate) . (_2 %~ const x)) $ x
+
+
+instance MonadZip ETree where
+  mzip x y = let ((zf, z), (wf, w)) = bimap (^. pull) (^. pull) (x, y) in (zipWith mzip zf wf, (z, w)) ^. push
+
+
+instance Foldable ETree where
+  foldMap f xs = f y `mappend` foldMap (foldMap f) ys
+    where
+      (ys, y) = xs ^. pull
+
+-- | Thank you, `Bitraversable`!
+instance Traversable ETree where
+  sequenceA :: Applicative f => ETree (f a) -> f (ETree a)
+  sequenceA = pull (bisequenceA . first (sequenceA . fmap sequenceA))
+
+-- | Convert to a `Tree`
+toTree :: ETree a -> Tree a
+toTree = uncurry Node . swap . first toForest . (^. pull)
+
+-- | Convert to a `Forest`
+toForest :: EForest a -> Forest a
+toForest = fmap toTree
 
