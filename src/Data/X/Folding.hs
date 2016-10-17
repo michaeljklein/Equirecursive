@@ -9,55 +9,18 @@ import Data.Typeable
 import Data.X
 import GHC.TypeLits( ErrorMessage(..), TypeError )
 import Data.Type.Equality
-import Data.Lifted
 import Data.Type.Bool
-
--- | Check whether a type is atomic
-type family IsAtom (a :: k) :: Bool where
-  IsAtom (c a) = 'False
-  IsAtom    a  = 'True
-
--- | Unit type with @'`Passes` :: `Passes`@ for assertions.
-data Passes = Passes deriving (Eq, Ord, Show)
-
--- sketch of how this could be used with quickcheck:
--- testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> Passes
--- testNonAtom (OfKind x) (OfKind y) = testNonAtom_ x y
--- testNonAtom_ :: X (a :: k0 -> k1) -> X (b :: k0) -> TestNonAtom a b
---
--- Here's a use for template haskell:
--- $(kindFamilyTest ''TestNonAtom)
-
-data OfKind k = forall (a :: k). OfKind { getOfKind :: X a }
-data APasses = forall (a :: Passes). APasses { getAPasses :: X a }
-
-testNonAtom :: OfKind (k0 -> k1) -> OfKind k0 -> APasses
-testNonAtom (OfKind x) (OfKind y) = APasses (testNonAtom_ x y)
-
--- | Should be able to make a classy version of this, except that type families
--- can't be passed to other type families without evaluation.
-testNonAtom_ :: X (a :: k0 -> k1) -> X (b :: k0) -> X (TestNonAtom a b)
-testNonAtom_ _ _ = (undefined :: X 'Passes)
-
--- | Results in a `TypeError` if `False`
-type family Assert (b :: Bool) (e :: ErrorMessage) :: Passes where
-  Assert 'True  e = 'Passes
-  Assert 'False e = TypeError e
-
-type family ShowType2 (a0 :: k0) (a1 :: k1) :: ErrorMessage where
-  ShowType2 a0 a1 = 'Text "\n  " ':<>: 'ShowType a0 ':<>: 'Text "\n  " ':<>: 'ShowType a1 ':<>: 'Text "\n"
-
--- | Results in a `TypeError` if `/=`. Reports its arguments upon error.
-type family AssertEq (a :: k) (b :: k) :: Passes where
-  AssertEq a b = Assert (a == b) ('Text "AssertEq failed with arguments:" ':<>: ShowType2 a b)
+import Unsafe.Coerce
+import Data.X.Pair
 
 
-type family TestNonAtom (a :: k0 -> k1) (b :: k0) :: Passes where
-  TestNonAtom a b = Assert (Not (IsAtom (a b))) ('Text "TestNonAtom run on:" ':<>: ShowType2 a b)
+-- -- | Unit type with @'`Passes` :: `Passes`@ for assertions.
+-- data Passes = Passes deriving (Eq, Ord, Show)
 
--- | Assert that @`FoldX` (`UnfoldX` a) == `X` a@
-type family TestUnfoldFold (a :: k) :: Passes where
-  TestUnfoldFold a = AssertEq (FoldX (UnfoldX a)) (X a)
+
+-- -- | Assert that @`FoldX` (`UnfoldX` a) == `X` a@
+-- type family TestUnfoldFold (a :: k) :: Passes where
+--   TestUnfoldFold a = AssertEq (FoldX (UnfoldX a)) (X a)
 
 
 
@@ -89,12 +52,12 @@ type family FoldXType (a :: Type) :: Type where
 
 
 -- | Show an unfolded type in tree form
-showToTree :: ToTree a => a -> String
-showToTree = drawTree . toTree
+showUnfolded :: ToTree (UnfoldX a) => a -> String
+showUnfolded = drawTree . toTree . (unsafeCoerce :: a -> UnfoldX a)
 
 -- | Print a type unfolded and in tree form
 printUnfolded :: ToTree (UnfoldX a) => a -> IO ()
-printUnfolded = putStrLn . showToTree . (undefined :: a -> UnfoldX a)
+printUnfolded = putStrLn . showUnfolded
 
 -- | See `toTree`
 class ToTree (a :: Type) where

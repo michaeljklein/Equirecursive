@@ -1,0 +1,8 @@
+import Test.QuickCheck
+import Data.Default
+import Data.Kind
+import Data.Type.Bool
+import GHC.TypeLits
+import Data.Type.Equality
+import Data.Typeable
+import Control.Comonad

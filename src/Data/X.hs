@@ -36,6 +36,15 @@ type family UnX (a :: *) :: k where
   UnX (X a) =                                                   a
   UnX    a  = TypeError ('Text "UnX called on " ':<>: 'ShowType a ':<>: 'Text ", which is not of the form 'X _'.")
 
+
+-- | Identity if `Type`, `X` otherwise.
+-- TODO: Should this be used in `ExistsK`?
+type family ToStar (a :: k) :: * where
+  ToStar (a :: *) =   a
+  ToStar (a :: k) = X a
+
+
+
 -- | Convenience alias
 type XX k = X (X :: k -> *)
 
@@ -55,19 +64,10 @@ instance Show VoidX where
   show _ = "VoidX"
 
 
-infixr 1 .:
--- | `X`-level `(:)`
-data (.:) (a :: *) (b :: *) = (.:) a b
-
-
 infixr 2 .$
 -- | `X`-level `($)`
 type family (.$) (a :: *) (b :: *) = (c :: *) | c -> a b where
   (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
-
-
-type family XApp (a :: *) = (b :: *) | b -> a where
-  XApp (X (c :: k -> k1) .: X (a :: k)) = X (c a)
 
 
 infixr 0 .||

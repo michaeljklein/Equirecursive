@@ -14,7 +14,7 @@ import Data.Proxy
 import Data.X.Folding
 import GHC.TypeLits
 import Data.Type.Bool
-
+import Data.X.Pair
 
 -------------------------------------------------------------------------------------------
 

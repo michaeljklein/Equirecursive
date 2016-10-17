@@ -21,14 +21,16 @@ import Data.Default
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Class
 import Data.Default.Orphans
-
+import Data.X.Folding
 
 -- | Nice types for nice type families
-class    (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a, Default a) => Nice a
+class    (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a, Default a, ToTree (UnfoldX a)) => Nice a
 
 -- | This instance makes `Nice` a class synonym.
-instance (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a, Default a) => Nice a
+instance (Arbitrary a, CoArbitrary a, Typeable a, ShrinkType a, Default a, ToTree (UnfoldX a)) => Nice a
 
+instance Show (ExistsK Type Nice) where
+  show (ExistsK x) = show (typeOf x)
 
 -- | Don't only recursively shrink the value, but also the type.
 -- Made possible by @`ExistsK` `Type` `Nice`@'s truly.
@@ -132,24 +134,24 @@ instance ShrinkTypeX (X a) star => ShrinkType (X a) where
   typeShrink = typeShrinkX
 
 
--- | First shrinks and returns all elements then shrinks and returns the whole list
-instance Nice a => ShrinkType [a] where
-  typeShrink x = typeShrunk ++ listShrunk
-    where
-      typeShrunk = join (typeShrink <$> x) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
-      listShrunk = (ExistsK . return) <$> shrink x
+-- -- | First shrinks and returns all elements then shrinks and returns the whole list
+-- instance Nice a => ShrinkType [a] where
+--   typeShrink x = typeShrunk ++ listShrunk
+--     where
+--       typeShrunk = join (typeShrink <$> x) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
+--       listShrunk = (ExistsK . return) <$> shrink x
 
 -- | Shrinks the value and type if `Just`
 instance ShrinkType a => ShrinkType (Maybe a) where
   typeShrink (Just  x) = typeShrink x >>= (\(ExistsK y) -> [ExistsK y, ExistsK (Just <$> y)])
   typeShrink (Nothing) = []
 
--- | See the `[]` instance
-instance Nice a => ShrinkType (Seq a) where
-  typeShrink x = typeShrunk ++ seqShrunk
-    where
-      typeShrunk = join (toList (typeShrink <$> x)) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
-      seqShrunk  = (ExistsK . return) <$> shrink x
+-- -- | See the `[]` instance
+-- instance Nice a => ShrinkType (Seq a) where
+--   typeShrink x = typeShrunk ++ seqShrunk
+--     where
+--       typeShrunk = join (toList (typeShrink <$> x)) >>= (\(ExistsK y) -> [ExistsK y, ExistsK ((return :: b -> [b]) <$> y)])
+--       seqShrunk  = (ExistsK . return) <$> shrink x
 
 -- | Returns @a@, @b@, @(a, b)@, each shrunk
 instance (Nice a, Nice b) => ShrinkType (a, b) where

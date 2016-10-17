@@ -2,33 +2,34 @@
 {-# LANGUAGE TypeInType #-}
 module Data.Type.Test.Internal where
 
+import Control.Comonad
 import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.State
+import Data.Default
+import Data.Default.Orphans
 import Data.Exists
+import Data.Foldable (toList)
 import Data.Int
 import Data.IntSet (IntSet)
 import Data.Kind
 import Data.Proxy
 import Data.Sequence (Seq)
 import Data.Type.Equality
+import Data.Type.Test.ShrinkType
+import Data.Type.Test.Star
 import Data.Typeable
 import Data.Word
 import Data.X
+import Data.X.Pair
 import GHC.TypeLits
 import Numeric.Natural
 import Test.QuickCheck
-import Test.QuickCheck.Poly
-import Control.Comonad
-import Data.Foldable (toList)
-import Data.Default
-import Control.Monad.Trans.State
-import Control.Monad.Trans.Class
-import Data.Default.Orphans
 import Test.QuickCheck.GenS
-import Data.Type.Test.ShrinkType
-import Data.Type.Test.Star
-
+import Test.QuickCheck.Poly
 
 -- TODO: add support for monad transformers
+-- Consider adding `ToTree` to `Nice`/`NiceX`
 
 -- | The maximum (total) depth of generated types.
 -- On my computer, this allows GHCi to generate
@@ -36,6 +37,24 @@ import Data.Type.Test.Star
 maxDepth :: Int
 maxDepth = 30
 
+natVals :: (KnownNat n0, KnownNat n1) => ((n0 :: Nat) :. (n1 :: Nat)) -> (Integer, Integer)
+natVals ns = let (nx :. ny) = xPair ns in (natVal nx, natVal ny)
+
+chooseNat :: (KnownNat n0, KnownNat n1) => ((n0 :: Nat) :. (n1 :: Nat)) -> Gen SomeNat
+chooseNat ns = ((\n -> case n of Just s -> s) . someNatVal) <$> choose (natVals ns)
+
+
+-- suchThat :: Gen a -> (a -> Bool) -> Gen a
+-- Generates a value that satisfies a predicate.
+
+-- suchThatMaybe :: Gen a -> (a -> Bool) -> Gen (Maybe a)
+-- Tries to generate a value that satisfies a predicate.
+
+-- | How nice is this? Really nice.
+instance (Constraints c 'True, Constraints c 'False) => Arbitrary (ExistsK Bool c) where
+  arbitrary = elements [ ExistsK (def :: X 'True)
+                       , ExistsK (def :: X 'False)
+                       ]
 
 -- | This recursively generates instances of @`ExistsK` `Type` `Nice`@,
 -- using `arbitraryExistsK0`, `arbitraryExistsK1`, etc. Shrinking is

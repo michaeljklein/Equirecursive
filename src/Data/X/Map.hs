@@ -12,7 +12,7 @@ import Data.X
 import Data.X.Folding
 import GHC.Exts (Coercible) -- , SpecConstrAnnotation)
 import Unsafe.Coerce
-import Data.Lifted
+import Data.X.Pair
 
 import Data.Tree
 import Data.Maybe
