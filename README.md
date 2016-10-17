@@ -36,6 +36,6 @@ zeroes ∷ (Int, Any)
 ```
 
 It actually works! Thanks to Haskell's laziness, `zeroes` is represented as `(Int, thunk)`,
-/and/ we can step forward a single step in the thunk's evaluation to get: `(Int, (Int, thunk))`.
+_and_ we can step forward a single step in the thunk's evaluation to get: `(Int, (Int, thunk))`.
 
 
