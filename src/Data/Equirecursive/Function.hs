@@ -15,10 +15,16 @@ import Control.Arrow
 import Data.Profunctor
 import Prelude hiding (id, (.))
 import Control.Monad.Zip
+import Control.Comonad
+import Control.Monad
 
 import Data.X
 import Unsafe.Coerce
 import Data.Function (fix)
+
+
+-- TODO: Move Nary and Partial into their own classes
+
 
 -- OOOH, I think I can solve part of the type equality within
 -- MapX, UnfoldX, etc. It will only work for prepared cases,
@@ -139,6 +145,11 @@ makeNary = Nary . lock . return . fix . naryCoerce
 instance Pull (Nary a0 b0) (Nary a1 b1) (a0 -> (b0, Nary a0 b0)) (a1 -> (b1, Nary a1 b1))
 
 
+-- | @`pure` `def`@
+instance Default b => Default (Nary a b) where
+  def = pure def
+
+
 -- | Lazily apply a function to all the partial
 -- results in an `Nary` function.
 instance Functor (Nary a) where
@@ -149,7 +160,7 @@ instance Functor (Nary a) where
 instance Applicative (Nary a) where
   -- | Constant function for `Nary`.
   pure :: b -> Nary a b
-  pure x = makeNary (\f y -> (x, return f))
+  pure x = makeNary (\f _ -> (x, return f))
 
   -- | I believe this is analogous to the @(`<*>`)@
   -- for @((->) a)@. Translate
@@ -167,7 +178,20 @@ instance Monad (Nary a) where
   return = pure
 
   (>>=) :: Nary a b -> (b -> Nary a c) -> Nary a c
-  (>>=) = undefined
+  (>>=) x f = join (f <$> x)
+    where
+      join :: Nary a (Nary a b) -> Nary a b
+      join = pull %~ (\f x -> bimap (fst . ($ x) . (^. pull)) join $ f x)
+
+
+-- | Equirecursive types often have a natural
+-- `Comonad` instance.
+instance Default a => Comonad (Nary a) where
+  extract :: Nary a b -> b
+  extract = fst . flip (^. pull) def
+
+  duplicate :: Nary a b -> Nary a (Nary a b)
+  duplicate = pull %~ ((fmap duplicate . join (,) . snd) .)
 
 
 -- | Consider making `Nary` also `Strong`.
