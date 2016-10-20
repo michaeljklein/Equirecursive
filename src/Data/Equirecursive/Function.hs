@@ -326,14 +326,6 @@ narym :: Monoid m => Nary m m
 narym = naryr mappend mempty
 
 
--- -- SUCCESS!!!!!!!!
--- -- λ> let tryPull = (unsafeCoerce :: RecurseL (Int -> (Int, XY)) -> Int -> (Int, RecurseL (Int -> (Int, XY))))
--- -- λ> let try = (\f x -> (x, return (f . (+x)))) :: (Int -> (Int, RecurseV)) -> (Int -> (Int, RecurseU (Int -> (Int, RecurseV))))
--- -- λ> let tryg = rec try :: RecurseL (Int -> (Int, XY))
--- -- λ> fst $ tryPull (snd $ (tryPull . snd $ tryPull tryg 1) 2) 0
--- -- 3
-
-
 
 
 
