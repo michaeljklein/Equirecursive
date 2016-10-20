@@ -21,6 +21,7 @@ library
                      , Data.Equirecursive
                      , Data.Equirecursive.Arrow
                      , Data.Equirecursive.Class
+                     , Data.Equirecursive.Class.TH
                      , Data.Equirecursive.Exists
                      , Data.Equirecursive.Function
                      , Data.Equirecursive.Graph

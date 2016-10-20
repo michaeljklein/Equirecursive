@@ -67,8 +67,8 @@ bmap = unsafeCoerce
 rec :: RecType a -> RecurseL a
 rec f = lock . return . fix $ bmap . f . amap
 
--- pull :: RecurseL a -> MapT XY (RecurseL a) a
--- pull = unsafeCoerce
+pullG :: RecurseL a -> MapT XY (RecurseL a) a
+pullG = unsafeCoerce
 
 
 

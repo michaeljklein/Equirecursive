@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Data.Equirecursive.Function where
 
 import Data.Exists
@@ -21,9 +23,36 @@ import Control.Monad
 import Data.X
 import Unsafe.Coerce
 import Data.Function (fix)
+import GHC.TypeLits
+import Data.Proxy
+import Data.Type.Equality
+
+-- type family F (c :: Constraint) (a :: Type) :: Constraint where
+--   F (a ~ (a, a)) a = a ~ a
+
+-- tt :: (c => a) -> (F c a => a)
+-- tt = undefined
+
+-- newtype List a = List { getList :: RecurseL (Y a, XY) }
+
+-- instance Pull1 List (Y a, XY) (Y b, XY) a b where
+--   pull1 :: Lens (List a) (List b) (a, List a) (b, List b)
+--   pull1 = undefined
+
+-- pullN :: RecurseL a -> P (RecurseL a) a
+-- pullN = undefined
+
+--  The other reuirements for this include: updating rec methods, updating equality, etc.
+-- λ> :t pullN (undefined :: RecurseL (Y a, XY))
+--   ∷ (a, Recurse 'Locked (Y a, XY))
+--
+-- λ> :t pullN (undefined :: RecurseL (Y a -> (Y b, XY)))
+--   ∷ a → (b, Recurse 'Locked (Y a → (Y b, XY)))
+
+-- instead of RecurseL (a, XY), do RecurseL (Y a, XY). Then `P` can manage the polymorphism!!!
 
 
--- TODO: Move Nary and Partial into their own classes
+-- TODO: Move Nary and Partial into their own modules
 
 
 -- OOOH, I think I can solve part of the type equality within
@@ -119,16 +148,35 @@ type family NotXY2 (a :: Type) :: Constraint where
 -- - an infinite-type based printf: Nary: naryl ++ Exists Show
 -- - generic infinite-type functions: Nary: naryl, naryr
 
--- | Not sure, but might be able to make any @`Nary` a b@ into
--- @a -> .. -> a -> `Nary` a b@ with this class.
+
+-- | It works! `aP` effectively has the following type:
+-- @
+-- `aP` :: a -> a -> .. -> a -> `Nary` a b
+-- @
 class Ap (a :: Type) (b :: Type) (to :: Type) | to -> a, to -> b where
   aP :: Nary a b -> to
 
--- instance Ap (Nary a b) (Nary a b) where
---   aP = undefined
+-- | Base case
+instance Ap (a :: Type) b (Nary a b) where
+  aP :: Nary a b -> Nary a b
+  aP = id
 
--- instance Ap (Nary a b) to => Ap nary (a -> to) where
---   aP = undefined
+-- | Inductive case
+instance Ap a b to => Ap (a :: Type) b (a -> to) where
+  aP :: Nary a b -> (a -> to)
+  aP = fmap (aP . snd) . (^. pull)
+
+
+class ApE (c :: k) (b :: Type) (to :: Type) | to -> c, to -> b where
+  aPE :: Nary (Exists c) b -> to
+
+instance ApE c b (Nary (Exists c) b) where
+  aPE :: Nary (Exists c) b -> Nary (Exists c) b
+  aPE = id
+
+instance (ApE c b to, Constraints c a) => ApE c b (a -> to) where
+  aPE :: Nary (Exists c) b -> (a -> to)
+  aPE = dimap (ExistsK . return) (aPE . snd) . (^. pull)
 
 
 -- | A n-ary function. This is the first real bit of fun with equirecursive types!
@@ -137,10 +185,6 @@ newtype Nary (a :: Type) (b :: Type) = Nary { getNary :: RecurseL (a -> (b, XY))
 -- | This is the key coercion to make a `Nary`
 naryCoerce :: ((a -> (b, RecurseV)) -> a -> (b, RecurseU (a -> (b, RecurseV)))) -> ((a -> (b, XY)) -> (a -> (b, XY)))
 naryCoerce = unsafeCoerce
-
--- | If impredicative polymorphism worked, this would just be @`Nary` . `rec`@
-makeNary :: ((a -> (b, RecurseV)) -> a -> (b, RecurseU (a -> (b, RecurseV)))) -> Nary a b
-makeNary = Nary . lock . return . fix . naryCoerce
 
 instance Pull (Nary a0 b0) (Nary a1 b1) (a0 -> (b0, Nary a0 b0)) (a1 -> (b1, Nary a1 b1))
 
@@ -155,12 +199,11 @@ instance Default b => Default (Nary a b) where
 instance Functor (Nary a) where
   fmap = rmap
 
-
 -- | Analogous to `Applicative` for unary functions.
 instance Applicative (Nary a) where
   -- | Constant function for `Nary`.
   pure :: b -> Nary a b
-  pure x = makeNary (\f _ -> (x, return f))
+  pure x = (const (x, pure x)) ^. push
 
   -- | I believe this is analogous to the @(`<*>`)@
   -- for @((->) a)@. Translate
@@ -208,7 +251,7 @@ instance Profunctor Nary where
 
 instance Category Nary where
   id :: Nary a a
-  id = makeNary $ \f x -> (x, return f)
+  id = (flip (,) id) ^. push
 
   (.) :: Nary b c -> Nary a b -> Nary a c
   (.) n0 n1 = n2 ^. push
@@ -218,13 +261,12 @@ instance Category Nary where
           (y, ys) = (n1 ^. pull) x
           (z, zs) = (n0 ^. pull) y
 
-
 -- | See function descriptions
 instance Arrow Nary where
   -- | This should be the (almost most) trivial nary function:
   -- @arr f == pull (arr f) undefined@
   arr :: (b -> c) -> Nary b c
-  arr f = makeNary $ \g x -> (f x, return g)
+  arr f = (\x -> (f x, arr f)) ^. push
 
   first :: Nary b c -> Nary (b, d) (c, d)
   first = pull %~ (rmap (\((x, n), y) -> ((x, y), first n)) . first)
@@ -262,73 +304,288 @@ instance MonadZip (Nary a) where
   mzip = (&&&)
 
 
--- | Make a `foldr`-like n-ary function (unimplemented)
+-- Can zip a Nary with an EList or a Nary
+-- Nary  a  b
+-- Nary  a' b'
+-- EList a'
+--    EList b'
+
+
+-- | Make a `foldr`-like n-ary function
 naryr :: (a -> b -> b) -> b -> Nary a b
-naryr f x = makeNary $ naryrUnfixed f x
+naryr f x = (\y ->let z = f y x in (z, naryr f z)) ^. push
 
-naryrUnfixed :: (a -> b -> b)
-             ->  b
-             -> (a -> (b, RecurseV))
-             ->  a
-             -> (b, RecurseU (a -> (b, RecurseV)))
-naryrUnfixed f x g y = (f y x, return (\z -> let (w, v) = g z in (f z w, v)))
-
--- | Make a `foldl`-like n-ary function (unimplemented)
+-- | Make a `foldl`-like n-ary function
 naryl :: (b -> a -> b) -> b -> Nary a b
-naryl f x = makeNary $ narylUnfixed f x
+naryl f x = (\y ->let z = f x y in (x, naryl f z)) ^. push
 
-narylUnfixed :: (b -> a -> b)
-             ->  b
-             -> (a -> (b, RecurseV))
-             ->  a
-             -> (b, RecurseU (a -> (b, RecurseV)))
-narylUnfixed f x g y = (f x y, return (\z -> let (w, v) = g z in (f w z, v)))
+naryCons :: Nary a [a]
+naryCons = naryr (:) []
 
--- SUCCESS!!!!!!!!
--- λ> let tryPull = (unsafeCoerce :: RecurseL (Int -> (Int, XY)) -> Int -> (Int, RecurseL (Int -> (Int, XY))))
--- λ> let try = (\f x -> (x, return (f . (+x)))) :: (Int -> (Int, RecurseV)) -> (Int -> (Int, RecurseU (Int -> (Int, RecurseV))))
--- λ> let tryg = rec try :: RecurseL (Int -> (Int, XY))
--- λ> fst $ tryPull (snd $ (tryPull . snd $ tryPull tryg 1) 2) 0
--- 3
+narym :: Monoid m => Nary m m
+narym = naryr mappend mempty
 
 
+-- -- SUCCESS!!!!!!!!
+-- -- λ> let tryPull = (unsafeCoerce :: RecurseL (Int -> (Int, XY)) -> Int -> (Int, RecurseL (Int -> (Int, XY))))
+-- -- λ> let try = (\f x -> (x, return (f . (+x)))) :: (Int -> (Int, RecurseV)) -> (Int -> (Int, RecurseU (Int -> (Int, RecurseV))))
+-- -- λ> let tryg = rec try :: RecurseL (Int -> (Int, XY))
+-- -- λ> fst $ tryPull (snd $ (tryPull . snd $ tryPull tryg 1) 2) 0
+-- -- 3
 
--- | Equirecursively typed functions that support unapplying and accessing applied arguments.
-newtype Partial (a :: Type) = Result { getPartial :: RecurseL (MakePartial a a) }
 
--- | Take a function and make one that allows accessing arguments when some, but not all,
--- have been applied. E.g. getting the @1@ out of @(`+` 1)@.
-makePartial :: a -> Partial a
-makePartial = undefined
 
--- | Somehow, make a class that allow accessing the result of a `Partial`ly applied function.
--- Quite probably, I should consider specifying this, based on currently applied args
--- (so that if a0, a1 are applied, it doesn't look like you can get a3.)
--- (Reconsider type)
-partial :: Lens (a0 ->an ->Partial b) (a0 ->an ->Partial c) (MakePartial b b) (MakePartial c c)
-partial = undefined
 
--- pull :: Partial (Int -> Bool) -> Int -> (Int .: Bool, Partial (Int -> Bool))
 
--- pull :: Partial (Int -> Bool -> ()) -> Int -> Bool -> (Int .: Bool .: (), Partial (Int -> Bool -> ()))
 
--- getArgs :: (Bool -> (Int .: Bool .: (), Result (Int -> Bool -> ()))) -> (Int        )
--- getArgs :: (        (Int .: Bool .: (), Result (Int -> Bool -> ()))) -> (Int .: Bool)
 
--- makeResult :: (Int -> Bool) -> Result (Int -> Bool)
 
--- | This goes like: @MakePartial (Int -> Bool -> ()) = Int -> Bool -> (Int .: Bool .: (), XY)@
-type family MakePartial (a :: Type) (b :: Type) :: Type where
-  MakePartial a (b -> c) = b -> MakePartial a c
-  MakePartial a (b     ) = (UnFunc a, XY)
 
--- | Used to get the result type of a function. Should satisfy:
--- @
--- IsAtom a ==> UnFunc a == a
--- UnFunc a == UnFunc (t -> a)
--- @
-type family UnFunc (a :: Type) :: Type where
-  UnFunc (a -> b) = a .: UnFunc b
-  UnFunc (a     ) = a
+-- | TODO: NaryGen is a Functor, Foldable, Traversable, and maybe other things.
+-- What does it do? It hides a (Nary a) inside or otherwise keeps track of the
+-- fmap's, foldr's, traverse's, etc. so that we can finally do the conversion
+-- below! Even better, I think that I can make "data From" and also do: (From a -> b) -> (a -> b)
+--
+-- Or even class Arrow a => LiftFrom a where
+--   liftFrom :: (From b -> c) -> a b c
+data NaryGen b a = forall c. c ~ b => NaryGen { getNaryGen :: Nary a c }
+
+-- -- | So, this is actually an instance of Partial?
+-- data (<~) b a = forall (b0 :: Type). From { from :: Nary a (b0 `Is` b) }
+
+-- -- | The functions that generate Nary's do: fmap snd . (^. pull) :: Nary a b -> a -> b?
+-- -- Somehow, they just return the first b in Nary.
+
+-- data IsNot (a :: Type) (b :: Type) where
+--   IsNot :: ((a == b) ~ 'False) => IsNot a b
+
+-- type family Is (a :: Type) (b :: Type) = (c :: Type) | c -> a b where
+--   Is (a :: Type) (a :: Type) = X a
+--   Is (a :: Type) (b :: Type) = a `IsNot` b
+
+-- -- | So this class is totally magic to me. How so?
+-- -- What's the type of `fromIs`? Ahh, the constraint allows it to simplifty `Is`.
+-- class FromIs b0 b where
+--   fromIs :: b0 `Is` b -> b
+--   toIs :: b -> b0 `Is` b
+
+-- instance (b0 ~ b) => FromIs b0 b where
+--   fromIs :: b0 `Is` b -> b
+--   fromIs = extract
+
+--   toIs :: b -> b0 `Is` b
+--   toIs = return
+
+-- type family IfIs (a0 :: Type) (b :: Type) where
+--   IfIs a0 (X        b) = a0
+--   IfIs a0 (IsNot b0 b) = b0 `IsNot` b
+
+-- -- -- | Why use unsafeCoerce? Because we're either coercing the second argument
+-- -- -- to itself or the equivalent of `Void`
+-- -- composeIs :: (b0 `Is` b) -> (a0 `Is` a) -> ((a0 `IfIs` (b0 `Is` b)) `Is` a)
+-- -- composeIs _ = unsafeCoerce
+-- -- composeNaryIs :: Nary c (b0 `Is` b) -> Nary b (a0 `Is` a) -> Nary c ((a0 `IfIs` (b0 `Is` b)) `Is` a)
+-- -- composeNaryIs n0 n1 =
+
+-- -- Should From just be id?
+
+-- -- | Pull out the @a -> Nary a b@, apply @x@ and push back in.
+-- pushFrom :: (b <~ a -> b) -> a -> (b <~ a -> b)
+-- pushFrom f x = f . ((\(From g) -> From (snd . ($ x) . (^. pull) $ g)))
+
+-- instance Default ((<~) b a) where
+--   def :: b <~ a
+--   def = undefined
+
+
+
+-- -- toNary :: (b <~ a -> b) -> Nary a b
+-- -- toNary f = (\x -> let f' = pushFrom f x in (f' def, toNary f')) ^. push
+
+-- f1 :: (b <~ a -> b) -> (Nary a b -> b)
+-- f1 = lmap (From . fmap toIs)
+
+-- f2 :: (Nary a b -> b) -> ((a -> (b, Nary a b)) -> b)
+-- f2 = lmap (^. push)
+
+-- f3 :: ((a -> (b, Nary a b)) -> b) -> (a -> Nary a b)
+-- f3 = undefined
+
+-- -- | assume b is the most recent result.
+-- -- we apply (pure undefined :: Nary a b?) to get the first 'b' and a view of the next Nary: Nary a b -> b
+-- -- then, we repeat. we pull out the next a, apply it, etc.
+-- --
+-- -- What does foldr do? it takes a Nary, replaces its recursion with the foldr recursion, and takes the first b.
+
+-- is :: b0 -> Proxy b -> b0 `Is` b
+-- is = undefined
+
+
+-- instance Contravariant ((<~) c) where
+--   contramap :: (b -> a) -> c <~ a -> c <~ b
+--   contramap f (From n) = From (lmap f n)
+
+-- instance Foldable ((<~) c) where
+--   foldr :: (a -> b -> b) -> b -> c <~ a -> b
+--   foldr f x (From n) = undefined
+
+-- instance Category (<~) where
+--   id :: a <~ a
+--   id = contramap toIs . From $ id
+
+--   (.) :: b <~ c -> a <~ b -> a <~ c
+--   (.) = error "\\(From n0 :: b <~ c) (From n1 :: a <~ b) -> From ((.) n1 (fmap (undefined :: Is b0 b -> b) n0))"
+
+
+-- -- Here's one way: Do `From b a` and require `b` to be typeable.
+-- -- Then, can define a class to extract the functions from From.
+-- -- When (From b a -> b), it's just a wrapper,
+-- -- When (From b a -> (func)), it dumps the functions,
+
+
+-- -- toFrom :: Nary a b -> (From a -> b)
+-- -- toFrom = undefined
+
+-- -- fromTo :: (From a -> b) -> Nary a b
+-- -- fromTo = undefined
+
+-- -- dropFrom :: (From a -> From b) -> Nary a b
+-- -- dropFrom = undefined
+
+-- -- liftFrom :: Nary a b -> From a -> From b
+-- -- liftFrom = undefined
+
+-- -- instance Contravariant From where
+-- --   contramap :: (a -> b) -> From b -> From a
+-- --   contramap f = liftFrom (undefined :: Nary b a)
+
+
+-- -- instance Foldable From where
+-- --   foldr :: (a -> b -> b) -> b -> (From a -> b)
+-- --   foldr f x = toFrom (undefined :: Nary a b)
+
+-- -- instance Functor From where
+-- --   fmap :: (a -> b) -> (From a -> From b)
+-- --   fmap f = liftFrom (undefined :: Nary a b)
+
+-- -- instance Applicative From where
+-- --   pure :: a -> From a
+-- --   pure = undefined
+
+-- --   (<*>) :: From (a -> b) -> From a -> From b
+-- --   (<*>) = undefined
+
+-- -- instance Monad From where
+-- --   return = pure
+
+-- --   (>>=) :: From a -> (a -> From b) -> From b
+-- --   (>>=) = undefined
+
+-- -- instance Comonad From where
+-- --   extract :: From a -> a
+-- --   extract = toFrom (id :: Nary a a)
+
+-- --   duplicate :: (From a -> From (From a))
+-- --   duplicate = undefined
+
+--   -- extend :: (From a -> b) -> (From a -> From b)
+--   -- extend f = liftFrom (undefined :: Nary a b)
+
+
+
+-- -- naryGen :: (NaryGen b a -> b) -> Nary a b
+-- -- naryGen = undefined
+
+-- -- instance Functor NaryGen where
+-- -- fmap = lmap
+-- --
+-- -- instance Applicative NaryGen where
+-- -- pure :: a -> NaryGen a
+-- -- pure = apply this value to Nary first
+-- --
+-- -- (<*>) :: NaryGen (a -> b) -> NaryGen a -> NaryGen b
+-- --
+-- -- instance Monad NaryGen where
+-- -- return = pure
+-- --
+-- -- (>>=) :: NaryGen a -> (a -> NaryGen b) -> NaryGen b
+-- -- (>>=) = hmmm....
+
+-- --      :: Monoid m => Nary m m
+-- -- fold :: Monoid m => t m -> m
+-- --
+-- --         :: Monoid m => (a -> m) -> Nary a m
+-- -- foldMap :: Monoid m => (a -> m) -> t a -> m
+-- --
+-- --        :: (a -> a -> a) -> Nary a a
+-- -- foldr1 :: (a -> a -> a) -> t a -> a
+-- --
+-- --        :: (a -> a -> a) -> Nary a a
+-- -- foldl1 :: (a -> a -> a) -> t a -> a
+-- --
+-- --        :: Nary a [a]
+-- -- toList :: t a -> [a]
+-- --
+-- --      :: Nary a Bool
+-- -- null :: t a -> Bool
+-- --
+-- --        :: Nary a Int
+-- -- length :: t a -> Int
+-- --
+-- --      ::         a -> Nary a Bool
+-- -- elem :: Eq a => a -> t a -> Bool
+-- --
+-- --         :: forall a. Ord a => Nary a a
+-- -- maximum :: forall a. Ord a => t a -> a
+-- --
+-- --         :: forall a. Ord a => Nary a a
+-- -- minimum :: forall a. Ord a => t a -> a
+-- --
+-- --     :: Num a => Nary a a
+-- -- sum :: Num a => t a -> a
+-- --
+-- --         :: Num a => Nary a a
+-- -- product :: Num a => t a -> a
+
+
+
+
+-- -- | Equirecursively typed functions that support unapplying and accessing applied arguments.
+-- newtype Partial (a :: Type) = Result { getPartial :: RecurseL (MakePartial a a) }
+
+-- -- | Take a function and make one that allows accessing arguments when some, but not all,
+-- -- have been applied. E.g. getting the @1@ out of @(`+` 1)@.
+-- makePartial :: a -> Partial a
+-- makePartial = undefined
+
+-- -- | Somehow, make a class that allow accessing the result of a `Partial`ly applied function.
+-- -- Quite probably, I should consider specifying this, based on currently applied args
+-- -- (so that if a0, a1 are applied, it doesn't look like you can get a3.)
+-- -- (Reconsider type)
+-- partial :: Lens (a0 ->an ->Partial b) (a0 ->an ->Partial c) (MakePartial b b) (MakePartial c c)
+-- partial = undefined
+
+-- -- pull :: Partial (Int -> Bool) -> Int -> (Int .: Bool, Partial (Int -> Bool))
+
+-- -- pull :: Partial (Int -> Bool -> ()) -> Int -> Bool -> (Int .: Bool .: (), Partial (Int -> Bool -> ()))
+
+-- -- getArgs :: (Bool -> (Int .: Bool .: (), Result (Int -> Bool -> ()))) -> (Int        )
+-- -- getArgs :: (        (Int .: Bool .: (), Result (Int -> Bool -> ()))) -> (Int .: Bool)
+
+-- -- makeResult :: (Int -> Bool) -> Result (Int -> Bool)
+
+-- -- | This goes like: @MakePartial (Int -> Bool -> ()) = Int -> Bool -> (Int .: Bool .: (), XY)@
+-- type family MakePartial (a :: Type) (b :: Type) :: Type where
+--   MakePartial a (b -> c) = b -> MakePartial a c
+--   MakePartial a (b     ) = (UnFunc a, XY)
+
+-- -- | Used to get the result type of a function. Should satisfy:
+-- -- @
+-- -- IsAtom a ==> UnFunc a == a
+-- -- UnFunc a == UnFunc (t -> a)
+-- -- @
+-- type family UnFunc (a :: Type) :: Type where
+--   UnFunc (a -> b) = a .: UnFunc b
+--   UnFunc (a     ) = a
 
 

@@ -73,16 +73,19 @@ class ToForest (a :: Type) where
 instance Typeable (X a) => ToTree (X a) where
   toTree x = Node (show . typeOf $ x) []
 
+
+-- | TODO: Somehow, I broke the following instance. Probably due to the updated X instances?
+
 -- | This forms a node with label @`typeOf` (`X` a)@ and
 -- subforest @`toForest` bs@
 instance (Typeable (X a), ToForest bs) => ToTree (X a .: bs) where
-  toTree x = Node (label x) (toForest (rm x))
-    where
-      hd :: (X a .: bs) -> X a
-      hd _ = undefined
-      label = drop 2 . show . typeOf . hd
-      rm :: (X a .: bs) -> bs
-      rm _ = undefined
+  toTree x = undefined -- Node (label x) (toForest (rm x))
+    -- where
+    --   hd :: (X a .: bs) -> X a
+    --   hd _ = undefined
+    --   label = drop 2 . show . typeOf . hd
+    --   rm :: (X a .: bs) -> bs
+    --   rm _ = undefined
 
 -- | This forms a forest with head @`toTree` a@ and
 -- tail @`toForest` as@

@@ -115,8 +115,13 @@ type family ElemX (a :: * ) (b :: * ) :: Bool where
 
 -- | Replace all instances of @from@ with @to@ in @a@.
 -- See `Elem` for when @from@ is recognized in @a@.
-type family MapT  (from :: k0) (to :: k0) (a :: k) :: k where
+type family MapT (from :: k0) (to :: k0) (a :: k) :: k where
   MapT from to a = UnX (FoldX (MapTX (UnfoldX from) (UnfoldX to) (UnfoldX a)))
+  -- MapT from to a = UnX (FoldX (MapTX (UnfoldX from) (UnfoldX to) (UnfoldX a)))
+
+type family MapType (from :: Type) (to :: Type) (a :: Type) :: Type where
+  MapType from to a = FoldXType (MapTX (UnfoldX from) (UnfoldX to) (UnfoldX a))
+
 
 -- | `X`-level `MapT`
 type family MapTX (from :: * ) (to :: * ) (a :: k) = (b :: k) where
