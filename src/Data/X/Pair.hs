@@ -1,4 +1,5 @@
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Data.X.Pair where
 
@@ -11,7 +12,8 @@ import Data.Bifunctor
 
 infixr 1 .:
 -- | `X`-level @(`:`)@
-data (.:) (a :: Type) (b :: Type) = (.:) a b
+-- data (.:) (a :: Type) (b :: Type) = (.:) a b
+data a .: b = (.:) a b
 
 -- | Polykinded @(`.:`)@.
 -- In a way, this is the binary form of `X`.
