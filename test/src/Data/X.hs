@@ -77,12 +77,10 @@ type family (.||) (a :: *) (b :: *) :: * where
 
 
 -- | Check if @k@ is `Type` in @`X` (a :: k)@.
-type family IsStarX (a :: k) :: Bool where
-  IsStarX (X (a :: Type)) = 'True
-  IsStarX (  (a :: k)) = 'False
+type family IsStarX (a :: *) :: Bool where
+  IsStarX (X (a :: *)) = 'True
+  IsStarX (X (a :: k)) = 'False
 
-instance Default Type where
-  def = (error "Type is uninhabited?" :: Type)
 
 class (IsStarX a ~ star) => DefaultX (a :: *) (star :: Bool) where
   defX :: a

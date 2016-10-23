@@ -65,6 +65,6 @@ instance (IsStarX (X a0) ~ 'False, IsStarX (X a1) ~ 'False) => XPair (a0 :: k0) 
   xPair _ = (def :. def)
 
 
-type family XApp (a :: Type) = (b :: Type) | b -> a where
+type family XApp (a :: *) = (b :: *) | b -> a where
   XApp (X (c :: k -> k1) .: X (a :: k)) = X (c a)
 

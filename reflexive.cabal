@@ -47,6 +47,9 @@ library
                      , Data.X.Folding
                      , Data.X.Map
                      , Data.X.Pair
+                     , Control.Monad.Trans.YT
+                     , Test.QuickCheck.Types
+                     , Test.QuickCheck.Types.TH
   ghc-options:         -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3
@@ -64,6 +67,10 @@ library
                      , hashable >= 1.2.4.0
                      , random >= 1.1
                      , bifunctors >= 5.4.1
+                     , checkers
+                     , ghci
+                     , bytestring >= 0.10.8.1
+                     , pretty >= 1.1.3.3
   default-language:    Haskell2010
   default-extensions:  ConstraintKinds
                      , DataKinds
@@ -117,6 +124,9 @@ test-suite basic-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
+                     , reflexive
+                     , HUnit
+                     , QuickCheck
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
   default-extensions:  ConstraintKinds

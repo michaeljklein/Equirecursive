@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
-module Data.X where
+module Test.Data.X where
 
 import GHC.Prim (Any)
 import Unsafe.Coerce (unsafeCoerce)
@@ -23,66 +23,38 @@ import Control.DeepSeq
 import Data.Hashable
 import Data.Distributive
 
+-- | TODO: Add Bits instance
 
--- | `X` is a semi-magic type. As an inhabited type, it may be safely
--- coerced to and from using `pure`/`return` and `extract`.
--- As an uninhabited type, it is used in type families
--- and is effectively a unit type with phantom argument.
---
--- Note: Need to make 100% sure that none of these operations can kill `XX`. Or at least accidentally.
-newtype X (a :: k) = X { getX :: Any } deriving (Typeable)
+-- type family UnX (a :: *) :: k where
+--   UnX (X a) =                                                   a
+--   UnX    a  = TypeError ('Text "UnX called on " ':<>: 'ShowType a ':<>: 'Text ", which is not of the form 'X _'.")
 
-type family UnX (a :: *) :: k where
-  UnX (X a) =                                                   a
-  UnX    a  = TypeError ('Text "UnX called on " ':<>: 'ShowType a ':<>: 'Text ", which is not of the form 'X _'.")
+-- type family ToStar (a :: k) :: * where
+--   ToStar (a :: *) =   a
+--   ToStar (a :: k) = X a
 
+-- instance Show VoidX where
+--   show _ = "VoidX"
 
--- | Identity if `Type`, `X` otherwise.
--- TODO: Should this be used in `ExistsK`?
-type family ToStar (a :: k) :: * where
-  ToStar (a :: *) =   a
-  ToStar (a :: k) = X a
+-- infixr 2 .$
+-- type family (.$) (a :: *) (b :: *) = (c :: *) | c -> a b where
+--   (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
 
 
+-- infixr 0 .||
+-- type family (.||) (a :: *) (b :: *) :: * where
+--   (.||) (X VoidX) b = b
+--   (.||)  a        b = a
 
--- | Convenience alias
-type XX k = X (X :: k -> *)
+-- type family IsStarX (a :: *) :: Bool where
+--   IsStarX (X (a :: *)) = 'True
+--   IsStarX (X (a :: k)) = 'False
 
--- | Synonym for ease of typing
-type Y = (X :: * -> *)
+notBottom :: a -> Bool
+notBottom x = x `seq` true
 
--- | Synonym for ease of typing
-type XY = X Y
-
-type XV = X VoidX
-
--- | `X`-level `[]`. Could handle being renamed.
-data VoidX
-
--- | Stub instance
-instance Show VoidX where
-  show _ = "VoidX"
-
-infixr 2 .$
--- | `X`-level `($)`
-type family (.$) (a :: *) (b :: *) = (c :: *) | c -> a b where
-  (.$) (X (c :: k -> k1)) (X (a :: k)) = X (c a)
-
-
-infixr 0 .||
--- | `X`-level `(||)`
-type family (.||) (a :: *) (b :: *) :: * where
-  (.||) (X VoidX) b = b
-  (.||)  a        b = a
-
-
--- | Check if @k@ is `Type` in @`X` (a :: k)@.
-type family IsStarX (a :: k) :: Bool where
-  IsStarX (X (a :: Type)) = 'True
-  IsStarX (  (a :: k)) = 'False
-
-instance Default Type where
-  def = (error "Type is uninhabited?" :: Type)
+testDefault :: Default a => a -> Bool
+testDefault x = notBottom $ def `asProxyTypeOf` x
 
 class (IsStarX a ~ star) => DefaultX (a :: *) (star :: Bool) where
   defX :: a
@@ -93,33 +65,34 @@ instance (IsStarX (X a) ~ 'False) => DefaultX (X a) 'False where
 instance DefaultX (X a) star => Default (X a) where
   def = defX
 
+-- testBounded :: (Ord a, Bounded a) => a -> Bool
+-- minBound <= maxBound
 
-class (IsStarX a ~ star) => BoundedX (a :: *) (star :: Bool) where
-  minBoundX :: a
-  maxBoundX :: a
-instance Bounded a => BoundedX (X a) 'True where
-  minBoundX = return minBound
-  maxBoundX = return maxBound
-instance (IsStarX (X a) ~ 'False) => BoundedX (X a) 'False where
-  minBoundX = def
-  maxBoundX = def
-instance BoundedX (X a) star => Bounded (X a) where
-  minBound = minBoundX
-  maxBound = maxBoundX
+testBounded :: (Bounded a, Ord a) => Proxy a -> Bool
+testBounded p = minBound <= maxBound `asProxyTypeOf` p
+
+prop_bounded_X :: Proxy (X a) -> Bool
+prop_bounded_X = testBounded
+
+prop_bounded_Y :: Proxy (Y a) -> Bool
+prop_bounded_Y = testBounded
+
+functorEq :: (Functor f, Eq a, Eq (f a)) => a -> a -> f a -> Bool
+functorEq x y fx = (x == y) `iff` (x <$ fx == y <$ fx)
+
+prop_eq_X :: X (a :: * -> *) -> X (a :: * -> *) -> Bool
+prop_eq_X = (==)
+
+prop_eq_Y :: a -> a -> X a -> Bool
+prop_eq_Y = functorEq
 
 
--- | I find this really neat. When `X` is inhabited, it
--- behaves like a trivial newtype wrapper. Uninhabited, it
--- behaves like a unit type with phantom argument.
-class (IsStarX a ~ star) => EqX (a :: *) (star :: Bool) where
-  eqX :: a -> a -> Bool
-instance Eq a => EqX (X a) 'True where
-  x `eqX` y = extract x == extract y
-instance (IsStarX (X a) ~ 'False) => EqX (X a) 'False where
-  eqX _ _ = True
-instance EqX (X a) star => Eq (X a) where
-  (==) = eqX
 
+testOrd :: Ord a => Proxy a -> Test -- (String, Property)
+testOrd x y = case x `compare` y of
+                LT ->  (x < y) && not (x > y) &&  (x <= y) && not (x >= y)
+                EQ -> not (x < y) && not (x > y) &&  (x <= y) &&  (x >= y)
+                GT -> not (x < y) &&  (x > y) && not (x <= y) &&  (x >= y)
 
 class (EqX a star, IsStarX a ~ star) => OrdX (a :: *) (star :: Bool) where
   compareX :: a -> a -> Ordering
@@ -130,6 +103,41 @@ instance (IsStarX (X a) ~ 'False) => OrdX (X a) 'False where
 instance OrdX (X a) star => Ord (X a) where
   compare = compareX
 
+inverses :: Eq a => (a -> b) -> (b -> a) -> a -> Bool
+inverses f f' x = ((f . f') x == x) && ((f' . f) y == y)
+
+testShowRead :: (Eq a, Show a, Read a) :: a -> Bool
+testShowRead = inverses show read
+
+class Read where
+  -- default definitions
+  readsPrec    = readPrec_to_S readPrec
+  readList     = readPrec_to_S (list readPrec) 0
+  readPrec     = readS_to_Prec readsPrec
+  readListPrec = readS_to_Prec (\_ -> readList)
+
+readListDefault :: Read a => ReadS [a]
+-- ^ A possible replacement definition for the 'readList' method (GHC only).
+--   This is only needed for GHC, and even then only for 'Read' instances
+--   where 'readListPrec' isn't defined as 'readListPrecDefault'.
+readListDefault = readPrec_to_S readListPrec 0
+
+readListPrecDefault :: Read a => ReadPrec [a]
+-- ^ A possible replacement definition for the 'readListPrec' method,
+--   defined using 'readPrec' (GHC only).
+readListPrecDefault = list readPrec
+
+class Show where
+    showsPrec _ x s = show x ++ s
+    show x          = shows x ""
+    showList ls   s = showList__ shows ls s
+
+showList__ :: (a -> ShowS) ->  [a] -> ShowS
+showList__ _     []     s = "[]" ++ s
+showList__ showx (x:xs) s = '[' : showx x (showl xs)
+  where
+    showl []     = ']' : s
+    showl (y:ys) = ',' : showx y (showl ys)
 
 class (IsStarX a ~ star) => ShowX (a :: *) (star :: Bool) where
   showX :: a -> String
@@ -140,6 +148,30 @@ instance (IsStarX (X a) ~ 'False, Typeable a, Typeable k) => ShowX (X (a :: k)) 
 instance ShowX (X a) star => Show (X a) where
   show = showX
 
+
+class Enum where
+    succ                   = toEnum . (+ 1)  . fromEnum
+    pred                   = toEnum . (subtract 1) . fromEnum
+    enumFrom x             = map toEnum [fromEnum x ..]
+    enumFromThen x y       = map toEnum [fromEnum x, fromEnum y ..]
+    enumFromTo x y         = map toEnum [fromEnum x .. fromEnum y]
+    enumFromThenTo x1 x2 y = map toEnum [fromEnum x1, fromEnum x2 .. fromEnum y]
+
+-- Default methods for bounded enumerations
+boundedEnumFrom :: (Enum a, Bounded a) => a -> [a]
+boundedEnumFrom n = map toEnum [fromEnum n .. fromEnum (maxBound `asTypeOf` n)]
+
+boundedEnumFromThen :: (Enum a, Bounded a) => a -> a -> [a]
+boundedEnumFromThen n1 n2
+  | i_n2 >= i_n1  = map toEnum [i_n1, i_n2 .. fromEnum (maxBound `asTypeOf` n1)]
+  | otherwise     = map toEnum [i_n1, i_n2 .. fromEnum (minBound `asTypeOf` n1)]
+  where
+    i_n1 = fromEnum n1
+    i_n2 = fromEnum n2
+
+inverses succ pred
+inverses toEnum fromEnum
+toEnum (x+1) = succ (toEnum x) -- or the like
 
 class (IsStarX a ~ star) => EnumX (a :: *) (star :: Bool) where
   succX :: a -> a
@@ -165,6 +197,26 @@ instance EnumX (X a) star => Enum (X a) where
   toEnum = toEnumX
   fromEnum = fromEnumX
 
+peekElemOff addr idx = IOExts.fixIO $ \result ->
+  peek (addr `plusPtr` (idx * sizeOf result))
+
+pokeElemOff addr idx x =
+  poke (addr `plusPtr` (idx * sizeOf x)) x
+
+peekByteOff addr off = peek (addr `plusPtr` off)
+
+pokeByteOff addr off x = poke (addr `plusPtr` off) x
+
+peekElemOff = peekElemOff_ undefined
+   where peekElemOff_ :: a -> Ptr a -> Int -> IO a
+         peekElemOff_ undef ptr off = peekByteOff ptr (off * sizeOf undef)
+pokeElemOff ptr off val = pokeByteOff ptr (off * sizeOf val) val
+
+peekByteOff ptr off = peek (ptr `plusPtr` off)
+pokeByteOff ptr off = poke (ptr `plusPtr` off)
+
+peek ptr = peekElemOff ptr 0
+poke ptr = pokeElemOff ptr 0
 
 class (IsStarX a ~ star) => StorableX (a :: *) (star :: Bool) where
   sizeOfX :: a -> Int
@@ -204,6 +256,15 @@ instance StorableX (X a) star => Storable (X a) where
   poke        = pokeX
 
 
+-- Assuming exact math, so won't work for Float, etc
+(x + y) * z == x * z + y * z
+signum (abs x) = fromInteger 1
+abs x = abs (negate x)
+abs (x + y) <= abs x + abs y
+fromInteger 2 * x == x + x
+x - y               = x + negate y
+negate x            = 0 - x
+
 class (IsStarX a ~ star) => NumX (a :: *) (star :: Bool) where
   plusX :: a -> a -> a
   minusX :: a -> a -> a
@@ -237,6 +298,10 @@ instance NumX (X a) star => Num (X a) where
   signum = signumX
   fromInteger = fromIntegerX
 
+mempty is id, mconcat like default
+mempty `mappend` x == x
+x `mappend` mempty == x
+mconcat x == foldr mappend mempty x
 
 class (IsStarX a ~ star) => MonoidX (a :: *) (star :: Bool) where
   memptyX :: a
@@ -255,6 +320,10 @@ instance MonoidX (X a) star => Monoid (X a) where
   mappend = mappendX
   mconcat = mconcatX
 
+arbitrary is not bottom, shrink is not bottom/infinite
+notBottom arbitrary
+notBottom . length . shrink
+shrink . shrink . shrink .. converges
 
 class (IsStarX a ~ star) => ArbitraryX (a :: *) (star :: Bool) where
   arbitraryX :: Gen a
@@ -269,6 +338,7 @@ instance ArbitraryX (X a) star => Arbitrary (X a) where
   arbitrary = arbitraryX
   shrink = shrinkX
 
+coarbitrary is not bottom
 
 class (IsStarX a ~ star) => CoArbitraryX (a :: *) (star :: Bool) where
   coarbitraryX :: a -> Gen b -> Gen b
@@ -290,6 +360,8 @@ instance CoArbitraryX (X a) star => CoArbitrary (X a) where
 -- instance FunctionX (X a) star => Function (X a) where
 --   function = functionX
 
+force x `seq` True
+force x == x
 
 class (IsStarX a ~ star) => NFDataX (a :: *) (star :: Bool) where
   rnfX :: a -> ()
@@ -300,6 +372,7 @@ instance (IsStarX (X a) ~ 'False) => NFDataX (X a) 'False where
 instance NFDataX (X a) star => NFData (X a) where
   rnf = rnfX
 
+hmmmm, at least check not bottom
 
 class (IsStarX a ~ star) => HashableX (a :: *) (star :: Bool) where
   hashWithSaltX :: Int -> a -> Int
@@ -314,10 +387,13 @@ instance HashableX (X a) star => Hashable (X a) where
   hashWithSalt = hashWithSaltX
   hash = hashX
 
+test simple (X String -> X String)?
+
 -- | Just uses `X` as a wrapper
 instance IsString a => IsString (X (a :: *)) where
   fromString = return . fromString
 
+functor
 
 -- | Trivial instance
 instance Functor X where
@@ -325,10 +401,27 @@ instance Functor X where
   {-# INLINE fmap #-}
   fmap f (X x) = X (unsafeCoerce (f (unsafeCoerce x)))
 
+test props
+distribute  = collect id
+collect f   = distribute . fmap f
+distributeM = fmap unwrapMonad . distribute . WrapMonad
+collectM f  = distributeM . liftM f
+
 -- | Trivial instance
 instance Distributive X where
   collect f = return . fmap (extract . f)
   distribute = return . fmap extract
+
+
+duplicate . duplicate = fmap duplicate . duplicate
+duplicate = extend id
+extend extract = id
+extend f . extend g = extend (f . extend g)
+extend f = fmap f . duplicate
+extract . duplicate = id
+extract . extend f = f
+fmap extract . duplicate = id
+fmap f = extend (f . extract)
 
 -- | Trivial instance
 instance Comonad X where
@@ -352,6 +445,7 @@ instance Comonad X where
 --   (<@) :: X a -> X b -> X a
 --   (<@) = (<*)
 
+applicative
 
 -- | Trivial instance
 instance Applicative X where
@@ -362,6 +456,7 @@ instance Applicative X where
   {-# INLINE (<*>) #-}
   f <*> x = pure (extract f $ extract x)
 
+monad
 
 -- | Trivial instance
 instance Monad X where
@@ -372,6 +467,21 @@ instance Monad X where
   {-# INLINE (>>=) #-}
   x >>= f = f (extract x)
 
+
+liftM (f *** g) (mzip ma mb) = mzip (liftM f ma) (liftM g mb)
+
+liftM (const ()) ma = liftM (const ()) mb
+`implies`
+munzip (mzip ma mb) = (ma, mb)
+
+  mzip :: m a -> m b -> m (a,b)
+  mzip = mzipWith (,)
+
+  mzipWith :: (a -> b -> c) -> m a -> m b -> m c
+  mzipWith f ma mb = liftM (uncurry f) (mzip ma mb)
+
+  munzip :: m (a,b) -> (m a, m b)
+  munzip mab = (liftM fst mab, liftM snd mab)
 
 -- | Trivial instance
 instance MonadZip X where
@@ -384,11 +494,66 @@ instance MonadZip X where
   munzip :: X (a, b) -> (X a, X b)
   munzip = bimap return return . extract
 
+test some simple recursions, props, including:
+fibbonacci
+factorial
+
+-- | Should give @`return` `0`@ when mfixed
+fixConst0 :: (Monad m, Num a) => a -> a
+fixConst0 x = return (abs (x - 1))
+
+-- purity
+mfix (return . h) = return (fix h)
+-- left shrinking (or tightening)
+mfix (\x -> a >>= \y -> f x y) = a >>= \y -> mfix (\x -> f x y)
+-- sliding
+mfix (liftM h . f) = liftM h (mfix (f . h)), for strict h.
+-- nesting
+mfix (\x -> mfix (\y -> f x y)) = mfix (\x -> f x x)
 
 -- | Should be equivalent to `fix` at compile time
 instance MonadFix X where
   mfix :: (a -> X a) -> X a
   mfix f = return (fix (extract . f))
+
+
+-- | Possible to use a state transformer to make this take a finite number of steps?
+fold = foldMap id
+foldMap f = foldr (mappend . f) mempty
+foldr f z t = appEndo (foldMap (Endo #. f) t) z
+foldr' f z0 xs = foldl f' id xs z0
+  where f' k x z = k $! f x z
+foldl f z t = appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z
+foldl' f z0 xs = foldr f' id xs z0
+      where f' x k z = k $! f z x
+foldr1 :: (a -> a -> a) -> t a -> a
+foldr1 f xs = fromMaybe (errorWithoutStackTrace "foldr1: empty structure")
+                (foldr mf Nothing xs)
+  where
+    mf x m = Just (case m of
+                     Nothing -> x
+                     Just y  -> f x y)
+foldl1 :: (a -> a -> a) -> t a -> a
+foldl1 f xs = fromMaybe (errorWithoutStackTrace "foldl1: empty structure")
+                (foldl mf Nothing xs)
+  where
+    mf m y = Just (case m of
+                     Nothing -> y
+                     Just x  -> f x y)
+toList t = build (\ c n -> foldr c n t)
+null = foldr (\_ _ -> False) True
+length = foldl' (\c _ -> c+1) 0
+elem = any . (==)
+maximum = fromMaybe (errorWithoutStackTrace "maximum: empty structure") .
+       getMax . foldMap (Max #. (Just :: a -> Maybe a))
+minimum = fromMaybe (errorWithoutStackTrace "minimum: empty structure") .
+       getMin . foldMap (Min #. (Just :: a -> Maybe a))
+sum = getSum #. foldMap Sum
+product = getProduct #. foldMap Product
+
+-- | If also Functor
+foldMap f = fold . fmap f
+foldMap f . fmap g = foldMap (f . g)
 
 
 -- | Trivial instance: @`X` (a :: *)@ contains exactly one
@@ -406,6 +571,8 @@ instance Foldable X where
   minimum = extract
   sum = extract
   product = extract
+
+traversable
 
 -- | Trivial instance
 instance Traversable X where
