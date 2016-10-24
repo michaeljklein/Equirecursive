@@ -165,6 +165,10 @@ import Text.PrettyPrint
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import GHC.TypeLits (Nat, Symbol)
+import Test.QuickCheck.GenS
+import Data.Type.Equality
+
 
 -- TODO: Need to make: Arbitrary, CoArbitrary, using GenS to prevent blowup
 -- Cleanup imports
@@ -185,15 +189,6 @@ instance Ppr (TypeK k) where
 -- | Convenience synonym
 type TypeKQ k = Q (TypeK k)
 
--- -- | Apply one `TypeK` to another
--- kApp :: TypeK (k0 -> k1) -> TypeK k0 -> TypeK k1
--- kApp (TypeK tyf kf) (TypeK tyx kx) = TypeK (AppT tyf tyx) ky
---   where
---     ky = (join $ liftM2 simpleApp kf kx) <|> (join $ liftM2 polyApp kf kx)
-
--- kapp :: TypeKQ (k0 -> k1) -> TypeKQ k0 -> TypeKQ k1
--- kapp = liftM2 kApp
-
 
 -- TODO: Fail better
 -- | Make a `TypeKQ`
@@ -205,10 +200,17 @@ typeK e _ n = do
     SigE (VarE _) (ForallT tys cxt (AppT _ kind)) -> return $ TypeK (ConT n) (Just $ ForallT tys cxt kind)
     other              -> fail . show $ other
 
-
 -- | Make a bunch of `TypeKQ`'s
 typeKs :: (ExpQ, X k, [Name]) -> [TypeKQ k]
 typeKs (e, x, ns) = typeK e x <$> ns
+
+instance Functor TypeK where fmap = undefined
+
+instance Applicative TypeK where
+  pure = undefined
+
+  (<*>) (TypeK tyf kf) (TypeK tyx kx) = TypeK (AppT tyf tyx) Nothing -- Nothing should eventually always be Just
+
 
 -- | Valid applications return `Just`, others return `Nothing`
 type family MaybeAppK (a :: Type) (b :: Type) :: Maybe Type where
@@ -254,69 +256,141 @@ simpleApp x y = case first (== y) <$> splitK x of
 polyApp :: Kind -> Kind -> Maybe Kind
 polyApp _ _ = def
 
-
+-- What do I want? I want given a bunch of TypeK's, generate all with given k.
+-- What do we have?
+--  (k0 -> k) k0 => k
+-- Problem: Polymorphism.
 
 -- maybeAppK :: forall t. TypeK a -> TypeK b -> MaybeTypeK t a b
 -- maybeAppK = undefined
 
 
+-- | No, this just screws things up.
 -- anyk :: [TypeKQ k]
---   all
 
--- meta :: [TypeKQ (Type -> Meta -> (Type -> Type) -> Type -> Type)]
---   `atom`
 
+
+
+instance ArbitraryS (TypeKQ Bool) where
+  arbitraryS' = elementS bool
+
+instance ArbitraryS (TypeKQ Meta) where
+  arbitraryS' = undefined
+
+instance ArbitraryS (TypeKQ (Type -> Meta -> (Type -> Type) -> Type -> Type)) where
+  arbitraryS' = elementS meta
+
+instance ArbitraryS (TypeKQ Nat) where
+  arbitraryS' = (return . flip TypeK def . LitT . NumTyLit . getNonNegative) <$> arbitraryS
+
+instance ArbitraryS (TypeKQ Symbol) where
+  arbitraryS' = (return . flip TypeK def . LitT . StrTyLit) <$> arbitraryS
+
+instance ArbitraryS (TypeKQ Type) where
+  arbitraryS' = undefined
 -- type1 :: [TypeKQ Type]
+--   allll.
 
+instance ArbitraryS (TypeKQ (Type -> Type)) where
+  arbitraryS' = undefined
 -- type2 :: [TypeKQ (Type -> Type)]
+--   wrapwrap (Type -> Type)
+--   wrappolywrap ((Type -> Type) -> (Type -> Type))
+--   wrap: k ~ Type
+--   typeWrap (Type): k ~ Type
+--   type4 (Type -> Type)
+--   type3type3 ((Type -> Type -> Type) -> Type)
+--   type3type2 (Type -> Type -> Type)
+--   type3 (Type)
+--   type2type3 ((Type -> Type) -> Type)
+--   type2type2type2 ((Type -> Type) -> (Type -> Type))
+--   type2type2 (Type -> Type)
+--   meta
 
--- type3 :: [TypeKQ (Type -> Type -> Type)]
-
--- type4 :: [TypeKQ (Type -> Type -> Type -> Type)]
---   `atom`
-
+instance ArbitraryS (TypeKQ ((Type -> Type) -> Type -> Type)) where
+  arbitraryS' = undefined
 -- type2type2 :: [TypeKQ ((Type -> Type) -> Type -> Type)]
---   type2type2type2
+--   type2type2type2 (Type -> Type)
+--   wrappolywrap (Type -> Type)
+--   wrapwrap: k ~ Type
+--   meta (Type -> Meta)
 
--- type2type2type2 :: [TypeKQ ((Type -> Type) -> (Type -> Type) -> Type -> Type)]
---   wrappolywrap
 
--- type2type3 :: [TypeKQ ((Type -> Type) -> Type -> Type -> Type)]
---   `atom`
+class ((Type == k) ~ ty1, (Type == k1) ~ ty2) => WrapPolyWrapArbitraryS (k :: Type) (k1 :: Type) (ty1 :: Bool) (ty2 :: Bool) where
+  wrapPolyWrapArbitraryS :: GenS (TypeKQ ((k -> Type) -> (k1 -> k) -> k1 -> Type))
+instance WrapPolyWrapArbitraryS Type Type 'True 'True where
+  wrapPolyWrapArbitraryS = oneofS . fmap elementS $ [type2type2type2, wrappolywrap]
+instance ((Type == k) ~ 'False, (Type == k1) ~ 'False) => WrapPolyWrapArbitraryS k k1 'False 'False where
+  wrapPolyWrapArbitraryS = elementS wrappolywrap
+instance WrapPolyWrapArbitraryS k k1 ty1 ty2 => ArbitraryS (TypeKQ ((k -> Type) -> (k1 -> k) -> k1 -> Type)) where
+  arbitraryS' = wrapPolyWrapArbitraryS
 
--- type3type2 :: [TypeKQ ((Type -> Type -> Type) -> Type -> Type)]
---   type3type3
 
--- type3type3 :: [TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type)]
---   `atom`
+class ((Type == k) ~ ty) => TypeWrapArbitraryS (k :: Type) (ty :: Bool) where
+  typeWrapArbitraryS :: GenS (TypeKQ (Type -> k -> Type))
 
--- typewrap :: [TypeKQ (Type -> k -> Type)]
---   `atom`
+instance TypeWrapArbitraryS Type 'True where
+  typeWrapArbitraryS = oneofS [elementS type3, undefined ]
+-- type3 :: [TypeKQ (Type -> Type -> Type)]
+--   type2type3 (Type -> Type)
+--   type3type3 (Type -> Type -> Type)
+--   type4 (Type)
+--   typewrap: k -> Type
 
--- wrap :: [TypeKQ (k -> Type)] -- add X
---   typewrap
+instance ((Type == k) ~ 'False) => TypeWrapArbitraryS k 'False where
+  typeWrapArbitraryS = elementS typewrap
 
--- wrappolywrap :: [TypeKQ ((k -> Type) -> (k1 -> k) -> k1 -> Type)]
---   `atom`
+instance TypeWrapArbitraryS k ty => ArbitraryS (TypeKQ (Type -> k -> Type)) where
+  arbitraryS' = typeWrapArbitraryS
 
+
+
+instance ArbitraryS (TypeKQ ((Type -> Type -> Type) -> Type -> Type)) where
+  arbitraryS' = elementS type3type2
+
+instance ArbitraryS (TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type)) where
+  arbitraryS' = elementS type3type3
+
+instance ArbitraryS (TypeKQ (Type -> Type -> Type -> Type)) where
+  arbitraryS' = elementS type4
+
+
+instance ArbitraryS (TypeKQ (k -> Type)) where
+  arbitraryS' = undefined
+-- wrap :: [TypeKQ (k -> Type)]
+--   typewrap (Type)
+--   wrappolywrap ((k1 -> Type) -> (k -> k1))
+--   wrapwrap (k -> Type)
+
+
+-- liftM2 (<*>) arbitraryS' arbitraryS'
+--   ∷ (ArbitraryS (f (a → b)), ArbitraryS (f a), Applicative f) ⇒
+--     Control.Monad.Trans.State.Lazy.StateT Int Gen (f b)
+
+-- tt :: (ArbitraryS (TypeKQ ((Type -> Type) -> (k -> Type) -> k -> Type)), ArbitraryS (TypeKQ (Type -> Type))) => GenS (TypeKQ ((k -> Type) -> k -> Type))
+-- tt = liftM2 (liftM2 (<*>)) arbitraryS' arbitraryS'
+
+instance ArbitraryS (TypeKQ ((k -> Type) -> k -> Type)) where
+  arbitraryS' = undefined
 -- wrapwrap :: [TypeKQ ((k -> Type) -> k -> Type)]
---   wrappolywrap
+--   wrappolywrap (k -> Type)
 
--- nat :: [TypeKQ Nat]
--- nat = undefined $ (LitT . NumTyLit) <$> [0..]
+
+
+
+
+nat :: [TypeKQ Nat]
+nat = undefined $ (LitT . NumTyLit) <$> [0..]
 
 -- numTyLit :: Integer -> TyLitQ
 
 -- strTyLit :: String -> TyLitQ
 
--- symbol :: [TypeKQ Symbol]
--- symbol = undefined $ (LitT . StrTyLit) <$> ["strings"] -- ascii
+symbol :: [TypeKQ Symbol]
+symbol = undefined $ (LitT . StrTyLit) <$> ["strings"] -- ascii
 
--- bool :: [TypeKQ Bool]
--- bool = undefined [ PromotedT 'True, PromotedT 'False ]
-
-
--- also, don't forget such things as: Symbol, Nat, Bool, ErrorMessage, etc.
+bool :: [TypeKQ Bool]
+bool = undefined [ PromotedT 'True, PromotedT 'False ]
 
 
 
@@ -532,6 +606,12 @@ type1 = typeKs ([| def :: X( Type ) |],
   , ''Version -- :: *
   , ''Word -- :: *
   ])
+
+
+
+
+
+
 
 
 

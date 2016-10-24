@@ -7,6 +7,10 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
 import System.Random
 
+-- | Refactor/rename to remove the '
+class ArbitraryS a where
+  arbitraryS' :: GenS a
+
 -- | `Gen` with `Int` state. Useful for limiting infinite
 -- generation.
 type GenS a = StateT Int Gen a
@@ -20,7 +24,7 @@ arbitraryS = decrementS >> lift arbitrary
 decrementS :: GenS ()
 decrementS = modify (+ (-1))
 
--- | See `oneof`
+-- | See `oneof`. TODO: Use state to choose smaller if run out (==0)
 oneofS :: [GenS a] -> GenS a
 oneofS xs = lift (choose (0, length xs - 1)) >>= (xs !!)
 
@@ -28,7 +32,7 @@ oneofS xs = lift (choose (0, length xs - 1)) >>= (xs !!)
 elementS :: [a] -> GenS a
 elementS = lift . elements
 
--- | See `choose`
+-- | See `choose`, pick lower bound if run out
 chooseS :: Random a => (a, a) -> GenS a
 chooseS = lift . choose
 
