@@ -291,8 +291,11 @@ instance ArbitraryS (TypeKQ Type) where
 -- type1 :: [TypeKQ Type]
 --   allll.
 
-instance ArbitraryS (TypeKQ (Type -> Type)) where
-  arbitraryS' = undefined
+
+class ((Type == k) ~ ty) => WrapArbitraryS (k :: Type) (ty :: Bool) where
+  wrapArbitraryS :: GenS (TypeKQ (k -> Type))
+instance WrapArbitraryS Type 'True where
+  wrapArbitraryS = undefined
 -- type2 :: [TypeKQ (Type -> Type)]
 --   wrapwrap (Type -> Type)
 --   wrappolywrap ((Type -> Type) -> (Type -> Type))
@@ -306,6 +309,18 @@ instance ArbitraryS (TypeKQ (Type -> Type)) where
 --   type2type2type2 ((Type -> Type) -> (Type -> Type))
 --   type2type2 (Type -> Type)
 --   meta
+
+instance ((Type == k) ~ 'False) => WrapArbitraryS k 'False where
+  wrapArbitraryS = undefined
+-- wrap :: [TypeKQ (k -> Type)]
+--   typewrap (Type)
+--   wrappolywrap ((k1 -> Type) -> (k -> k1))
+--   wrapwrap (k -> Type)
+
+instance WrapArbitraryS k ty => ArbitraryS (TypeKQ (k -> Type)) where
+  arbitraryS' = wrapArbitraryS
+
+
 
 instance ArbitraryS (TypeKQ ((Type -> Type) -> Type -> Type)) where
   arbitraryS' = undefined
@@ -328,22 +343,22 @@ instance WrapPolyWrapArbitraryS k k1 ty1 ty2 => ArbitraryS (TypeKQ ((k -> Type) 
 
 class ((Type == k) ~ ty) => TypeWrapArbitraryS (k :: Type) (ty :: Bool) where
   typeWrapArbitraryS :: GenS (TypeKQ (Type -> k -> Type))
-
 instance TypeWrapArbitraryS Type 'True where
-  typeWrapArbitraryS = oneofS [elementS type3, undefined ]
--- type3 :: [TypeKQ (Type -> Type -> Type)]
---   type2type3 (Type -> Type)
---   type3type3 (Type -> Type -> Type)
---   type4 (Type)
---   typewrap: k -> Type
-
+  typeWrapArbitraryS = oneofS
+    [ elementS type3
+    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ (Type -> Type -> Type -> Type))) arbitraryS'
+    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type))) arbitraryS'
+    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ ((Type -> Type) -> Type -> Type -> Type))) (arbitraryS' :: GenS (TypeKQ (Type -> Type)))
+    , elementS typewrap
+    ]
 instance ((Type == k) ~ 'False) => TypeWrapArbitraryS k 'False where
   typeWrapArbitraryS = elementS typewrap
-
 instance TypeWrapArbitraryS k ty => ArbitraryS (TypeKQ (Type -> k -> Type)) where
   arbitraryS' = typeWrapArbitraryS
 
 
+instance ArbitraryS (TypeKQ ((Type -> Type) -> Type -> Type -> Type)) where
+  arbitraryS' = elementS type2type3
 
 instance ArbitraryS (TypeKQ ((Type -> Type -> Type) -> Type -> Type)) where
   arbitraryS' = elementS type3type2
@@ -354,13 +369,6 @@ instance ArbitraryS (TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type)) wh
 instance ArbitraryS (TypeKQ (Type -> Type -> Type -> Type)) where
   arbitraryS' = elementS type4
 
-
-instance ArbitraryS (TypeKQ (k -> Type)) where
-  arbitraryS' = undefined
--- wrap :: [TypeKQ (k -> Type)]
---   typewrap (Type)
---   wrappolywrap ((k1 -> Type) -> (k -> k1))
---   wrapwrap (k -> Type)
 
 
 -- liftM2 (<*>) arbitraryS' arbitraryS'
