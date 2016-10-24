@@ -53,7 +53,7 @@ import Data.Monoid                 (Product)
 import Data.Monoid                 (Sum)
 import Data.Ord                    (Down)
 import Data.Proxy                  (KProxy)
-import Data.Proxy                  (Proxy)
+import Data.Proxy                  (Proxy(..))
 import Data.Semigroup              (Arg)
 import Data.Semigroup              (Max)
 import Data.Semigroup              (Min)
@@ -178,6 +178,7 @@ import Data.Type.Equality
 
 -- TODO: GenS elements/oneOf need to decrement state when traversing!
 
+
 -- | A TemplateHaskell `Type` with kind @k@
 data TypeK k = TypeK { getTypeK :: TH.Type, typeKind :: Maybe Kind } deriving (Eq, Ord, Show)
 
@@ -204,8 +205,10 @@ typeK e _ n = do
 typeKs :: (ExpQ, X k, [Name]) -> [TypeKQ k]
 typeKs (e, x, ns) = typeK e x <$> ns
 
+-- | `fmap` is likely impossible. Here to have `Applicative`
 instance Functor TypeK where fmap = undefined
 
+-- | `pure` is likely impossible
 instance Applicative TypeK where
   pure = undefined
 
@@ -225,7 +228,7 @@ class (MaybeAppK a b ~ m) => TypeKApp (a :: Type) (b :: Type) (m :: Maybe Type) 
 
   maybeAppK  :: forall t. TypeKQ a -> TypeKQ b -> MaybeT Q (TypeK (DropMaybe t a b m))
 
-
+-- | Return `Just` when the application is valid
 instance (MaybeAppK a b ~ 'Just k) => TypeKApp a b ('Just k) where
   type DropMaybe t a b ('Just k) = k
   maybeAppK' :: TypeK a -> TypeK b -> Maybe (TypeK k)
@@ -235,7 +238,7 @@ instance (MaybeAppK a b ~ 'Just k) => TypeKApp a b ('Just k) where
 
   maybeAppK x y = MaybeT (liftM2 maybeAppK' x y)
 
-
+-- | Return `Nothing` when the application is invalid
 instance (MaybeAppK a b ~ 'Nothing) => TypeKApp a b 'Nothing where
   type DropMaybe t a b 'Nothing = t
   maybeAppK' :: forall t. TypeK a -> TypeK b -> Maybe (TypeK t)
@@ -243,31 +246,46 @@ instance (MaybeAppK a b ~ 'Nothing) => TypeKApp a b 'Nothing where
 
   maybeAppK x y = MaybeT (liftM2 maybeAppK' x y)
 
-
+-- | Split a kind of the form @k0 -> k1@
 splitK :: Kind -> Maybe (Kind, Kind)
 splitK (AppT (AppT ArrowT k0) k1) = Just (k0, k1)
 splitK  _                         = Nothing
 
+-- | Apply a simple (non-polymorphic) kind to another
 simpleApp :: Kind -> Kind -> Maybe Kind
 simpleApp x y = case first (== y) <$> splitK x of
                   Just (True, z) -> Just z
                   _              -> Nothing
 
+-- | Apply a polymorphic kind to another
 polyApp :: Kind -> Kind -> Maybe Kind
 polyApp _ _ = def
 
--- What do I want? I want given a bunch of TypeK's, generate all with given k.
--- What do we have?
---  (k0 -> k) k0 => k
--- Problem: Polymorphism.
 
--- maybeAppK :: forall t. TypeK a -> TypeK b -> MaybeTypeK t a b
--- maybeAppK = undefined
+-- | A simple type function plus `asTypeOf`
+arbitrarySProxy :: ArbitraryS (TypeKQ a) => Proxy a -> GenS (TypeKQ a)
+arbitrarySProxy _ = arbitraryS'
 
+-- | Lift `Proxy` to a `GenS` `TypeKQ`. Idempotent.
+class LiftGenS (a :: Type) (b :: Type) | a -> b where
+  liftGenS :: a -> GenS (TypeKQ b)
 
--- | No, this just screws things up.
--- anyk :: [TypeKQ k]
+instance ArbitraryS (TypeKQ a) => LiftGenS (Proxy a) a where
+  liftGenS = arbitrarySProxy
 
+instance LiftGenS (GenS (TypeKQ a)) a where
+  liftGenS = id
+
+-- appTypeGenS :: (ArbitraryS (TypeKQ (a -> b)), ArbitraryS (TypeKQ a)) => Proxy (a -> b) -> Proxy a -> GenS (Q (TypeK b))
+-- appTypeGenS p1 p2 = liftM2 (liftM2 (<*>)) (arbitrarySProxy p1) (arbitrarySProxy p2)
+
+-- | Apply one `TypeKQ` `GenS` to another. See `LiftGenS`
+appTypeGenS :: (LiftGenS f (a -> b), LiftGenS t a) => f -> t -> GenS (TypeKQ b)
+appTypeGenS f x = liftM2 (liftM2 (<*>)) (liftGenS f) (liftGenS x)
+
+infixl 1 $~>
+($~>) :: (LiftGenS f (a -> b), LiftGenS t a) => f -> t -> GenS (TypeKQ b)
+($~>) = appTypeGenS
 
 
 
@@ -287,56 +305,65 @@ instance ArbitraryS (TypeKQ Symbol) where
   arbitraryS' = (return . flip TypeK def . LitT . StrTyLit) <$> arbitraryS
 
 instance ArbitraryS (TypeKQ Type) where
-  arbitraryS' = undefined
--- type1 :: [TypeKQ Type]
---   allll.
+  arbitraryS' = oneofS
+    [ elementS type1
+    , (Proxy :: Proxy (Type -> Type)) $~> (Proxy :: Proxy Type)
+    ]
 
 
 class ((Type == k) ~ ty) => WrapArbitraryS (k :: Type) (ty :: Bool) where
   wrapArbitraryS :: GenS (TypeKQ (k -> Type))
 instance WrapArbitraryS Type 'True where
-  wrapArbitraryS = undefined
--- type2 :: [TypeKQ (Type -> Type)]
---   wrapwrap (Type -> Type)
---   wrappolywrap ((Type -> Type) -> (Type -> Type))
---   wrap: k ~ Type
---   typeWrap (Type): k ~ Type
---   type4 (Type -> Type)
---   type3type3 ((Type -> Type -> Type) -> Type)
---   type3type2 (Type -> Type -> Type)
---   type3 (Type)
---   type2type3 ((Type -> Type) -> Type)
---   type2type2type2 ((Type -> Type) -> (Type -> Type))
---   type2type2 (Type -> Type)
---   meta
-
-instance ((Type == k) ~ 'False) => WrapArbitraryS k 'False where
-  wrapArbitraryS = undefined
--- wrap :: [TypeKQ (k -> Type)]
---   typewrap (Type)
---   wrappolywrap ((k1 -> Type) -> (k -> k1))
---   wrapwrap (k -> Type)
-
+  wrapArbitraryS = oneofS
+    [  elementS type2
+    ,  elementS wrap
+    ,  (Proxy :: Proxy (Type -> Type -> Type)) $~> (Proxy :: Proxy Type)
+    ,  (Proxy :: Proxy (Type -> Meta -> (Type -> Type) -> Type -> Type)) $~> (Proxy :: Proxy Type) $~> (Proxy :: Proxy Meta) $~> (Proxy :: Proxy (Type -> Type))
+    ,  (Proxy :: Proxy ((Type -> Type) -> Type -> Type)) $~> (Proxy :: Proxy (Type -> Type))
+    ,  (Proxy :: Proxy ((Type -> Type) -> Type -> Type -> Type)) $~> (Proxy :: Proxy (Type -> Type)) $~> (Proxy :: Proxy Type)
+    ,  (Proxy :: Proxy ((Type -> Type -> Type) -> Type -> Type)) $~> (Proxy :: Proxy (Type -> Type -> Type))
+    ]
+instance ((Type == k) ~ 'False, ArbitraryS (TypeKQ ((Type -> Type) -> (k -> Type) -> k -> Type)), ArbitraryS (TypeKQ (k -> Type))) => WrapArbitraryS k 'False where
+  wrapArbitraryS = oneofS
+    [  elementS wrap
+    ,  (Proxy :: Proxy ((k -> Type) -> k -> Type)) $~> (Proxy :: Proxy (k -> Type))
+    ]
 instance WrapArbitraryS k ty => ArbitraryS (TypeKQ (k -> Type)) where
   arbitraryS' = wrapArbitraryS
 
 
 
-instance ArbitraryS (TypeKQ ((Type -> Type) -> Type -> Type)) where
-  arbitraryS' = undefined
--- type2type2 :: [TypeKQ ((Type -> Type) -> Type -> Type)]
---   type2type2type2 (Type -> Type)
---   wrappolywrap (Type -> Type)
---   wrapwrap: k ~ Type
---   meta (Type -> Meta)
+class ((Type == k) ~ ty) => WrapWrapArbitraryS (k :: Type) (ty :: Bool) where
+  wrapWrapArbitraryS :: GenS (TypeKQ ((k -> Type) -> k -> Type))
+instance WrapWrapArbitraryS Type 'True where
+  wrapWrapArbitraryS = oneofS
+    [  elementS wrapwrap
+    , (Proxy :: Proxy ((Type -> Type) -> (Type -> Type) -> Type -> Type)) $~> (Proxy :: Proxy (Type -> Type))
+    , (Proxy :: Proxy (Type -> Meta -> (Type -> Type) -> Type -> Type)) $~> (Proxy :: Proxy Type) $~> (Proxy :: Proxy Meta)
+    ]
+instance ((Type == k) ~ 'False) => WrapWrapArbitraryS k 'False where
+  wrapWrapArbitraryS = oneofS
+    [  elementS wrapwrap
+    ,  (Proxy :: Proxy ((Type -> Type) -> (k -> Type) -> k -> Type)) $~> (Proxy :: Proxy (Type -> Type))
+    ]
+instance WrapWrapArbitraryS k ty => ArbitraryS (TypeKQ ((k -> Type) -> k -> Type)) where
+  arbitraryS' = wrapWrapArbitraryS
 
 
 class ((Type == k) ~ ty1, (Type == k1) ~ ty2) => WrapPolyWrapArbitraryS (k :: Type) (k1 :: Type) (ty1 :: Bool) (ty2 :: Bool) where
   wrapPolyWrapArbitraryS :: GenS (TypeKQ ((k -> Type) -> (k1 -> k) -> k1 -> Type))
 instance WrapPolyWrapArbitraryS Type Type 'True 'True where
   wrapPolyWrapArbitraryS = oneofS . fmap elementS $ [type2type2type2, wrappolywrap]
+
+instance ((Type == k1) ~ 'False) => WrapPolyWrapArbitraryS Type k1 'True 'False where
+  wrapPolyWrapArbitraryS = elementS wrappolywrap
+
+instance ((Type == k) ~ 'False) => WrapPolyWrapArbitraryS k Type 'False 'True where
+  wrapPolyWrapArbitraryS = elementS wrappolywrap
+
 instance ((Type == k) ~ 'False, (Type == k1) ~ 'False) => WrapPolyWrapArbitraryS k k1 'False 'False where
   wrapPolyWrapArbitraryS = elementS wrappolywrap
+
 instance WrapPolyWrapArbitraryS k k1 ty1 ty2 => ArbitraryS (TypeKQ ((k -> Type) -> (k1 -> k) -> k1 -> Type)) where
   arbitraryS' = wrapPolyWrapArbitraryS
 
@@ -346,15 +373,17 @@ class ((Type == k) ~ ty) => TypeWrapArbitraryS (k :: Type) (ty :: Bool) where
 instance TypeWrapArbitraryS Type 'True where
   typeWrapArbitraryS = oneofS
     [ elementS type3
-    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ (Type -> Type -> Type -> Type))) arbitraryS'
-    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type))) arbitraryS'
-    , liftM2 (liftM2 (<*>)) (arbitraryS' :: GenS (TypeKQ ((Type -> Type) -> Type -> Type -> Type))) (arbitraryS' :: GenS (TypeKQ (Type -> Type)))
     , elementS typewrap
+    , appTypeGenS (Proxy :: Proxy (Type -> Type -> Type -> Type)) (Proxy :: Proxy Type)
+    , appTypeGenS (Proxy :: Proxy ((Type -> Type) -> Type -> Type -> Type)) (Proxy :: Proxy (Type -> Type))
+    , appTypeGenS (Proxy :: Proxy ((Type -> Type -> Type) -> Type -> Type -> Type)) (Proxy :: Proxy (Type -> Type -> Type))
     ]
 instance ((Type == k) ~ 'False) => TypeWrapArbitraryS k 'False where
   typeWrapArbitraryS = elementS typewrap
 instance TypeWrapArbitraryS k ty => ArbitraryS (TypeKQ (Type -> k -> Type)) where
   arbitraryS' = typeWrapArbitraryS
+
+
 
 
 instance ArbitraryS (TypeKQ ((Type -> Type) -> Type -> Type -> Type)) where
@@ -370,37 +399,8 @@ instance ArbitraryS (TypeKQ (Type -> Type -> Type -> Type)) where
   arbitraryS' = elementS type4
 
 
-
--- liftM2 (<*>) arbitraryS' arbitraryS'
---   ∷ (ArbitraryS (f (a → b)), ArbitraryS (f a), Applicative f) ⇒
---     Control.Monad.Trans.State.Lazy.StateT Int Gen (f b)
-
--- tt :: (ArbitraryS (TypeKQ ((Type -> Type) -> (k -> Type) -> k -> Type)), ArbitraryS (TypeKQ (Type -> Type))) => GenS (TypeKQ ((k -> Type) -> k -> Type))
--- tt = liftM2 (liftM2 (<*>)) arbitraryS' arbitraryS'
-
-instance ArbitraryS (TypeKQ ((k -> Type) -> k -> Type)) where
-  arbitraryS' = undefined
--- wrapwrap :: [TypeKQ ((k -> Type) -> k -> Type)]
---   wrappolywrap (k -> Type)
-
-
-
-
-
-nat :: [TypeKQ Nat]
-nat = undefined $ (LitT . NumTyLit) <$> [0..]
-
--- numTyLit :: Integer -> TyLitQ
-
--- strTyLit :: String -> TyLitQ
-
-symbol :: [TypeKQ Symbol]
-symbol = undefined $ (LitT . StrTyLit) <$> ["strings"] -- ascii
-
 bool :: [TypeKQ Bool]
-bool = undefined [ PromotedT 'True, PromotedT 'False ]
-
-
+bool = (return . flip TypeK (return . ConT $ ''Bool) . PromotedT) <$> ['True, 'False]
 
 -- | List of included types should go here.
 type3type3 :: [TypeKQ ((Type -> Type -> Type) -> Type -> Type -> Type)]
@@ -614,15 +614,6 @@ type1 = typeKs ([| def :: X( Type ) |],
   , ''Version -- :: *
   , ''Word -- :: *
   ])
-
-
-
-
-
-
-
-
-
 
 
 
