@@ -47,9 +47,9 @@ library
                      , Data.X.Folding
                      , Data.X.Map
                      , Data.X.Pair
-                     , Control.Monad.Trans.YT
                      , Test.QuickCheck.Types
                      , Test.QuickCheck.Types.TH
+                     , Test.QuickCheck.Types.Test
   ghc-options:         -fprint-unicode-syntax
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3

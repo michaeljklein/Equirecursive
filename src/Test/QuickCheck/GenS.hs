@@ -7,6 +7,8 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
 import System.Random
 
+
+
 -- | Refactor/rename to remove the '
 class ArbitraryS a where
   arbitraryS' :: GenS a

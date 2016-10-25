@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeInType #-}
 
 module Test.QuickCheck.Types where
@@ -8,6 +9,11 @@ import Data.Kind
 import Data.X
 import Data.X.Pair
 import Data.Type.Bool
+
+import Test.QuickCheck.Types.TH
+import qualified Language.Haskell.TH as TH
+import Control.Monad
+import Data.Default
 
 u = error "My undefined"
 
@@ -32,6 +38,25 @@ type family Div'' (b :: Bool) (q :: Nat) (r :: Nat) (d :: Nat) :: Nat where
 
 
 data TyResult = TySuccess ErrorMessage | TyFails ErrorMessage
+
+class Success (r :: TyResult) where
+  success :: X r -> Bool
+
+instance Success ('TySuccess e) where
+  success _ = True
+
+instance Success ('TyFails e) where
+  success _ = False
+
+class DropTyError (r :: TyResult) where
+  dropTyError :: X r -> X r
+
+instance DropTyError (TySuccess e) where
+  dropTyError = id
+
+instance TypeError e => DropTyError (TyFails e) where
+  dropTyError = id
+
 
 -- | Add a note to a `TyResult`, e.g.
 -- @(x === y) `Note` (X x :. X y :. "should have the same kind")@
@@ -87,14 +112,43 @@ type family AssertFails (a :: TyResult) = (r :: TyResult) | r -> a where
   AssertFails ('TyFails   e) = 'TySuccess (ShowAssertFails e)
 
 
--- type family Reflexive (a :: k) :: Type where
---   Reflexive a = a === a
+type family Reflexive (a :: k) :: TyResult where
+  Reflexive a = a === a
 
+defx :: Default (X a) => X a
+defx = def
+
+type TExpQ a = TH.Q (TH.TExp a)
+
+-- appTypeK :: TypeK k ->
+
+reflexive :: TypeKQ k -> TH.ExpQ
+reflexive x = x >>= \(TypeK t _) -> [| let result = $([| reflexive_ |])(def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
+
+reflexive_ :: (X (a :: k)) -> X (Reflexive a)
+reflexive_ _ = def
+
+type family IsTrue (a :: Bool) :: TyResult where
+  IsTrue a = a === 'True
+
+isTrue :: TypeKQ Bool -> TH.ExpQ
+isTrue x = x >>= \(TypeK t _) -> [| let result = isTrue_ (def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
+
+isTrue_ :: X (a :: Bool) -> X (IsTrue a)
+isTrue_ _ = def
+
+$((dropFamily ''Reflexive))
+
+-- $(dropped_Reflexive undefined undefined)
 -- reflexive :: Reflexive (a :: k)
 -- reflexive = "reflexive1"
 
--- type family Fails (a :: k) :: Type where
---   Fails a = Int === Bool
+-- $(
+
+type family Fails (a :: k) :: TyResult where
+  Fails a = Int === Bool
+
+
 
 -- fails :: Fails (a :: k)
 -- fails = "fails"

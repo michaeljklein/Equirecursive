@@ -5,6 +5,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE NoMonoLocalBinds #-}
+{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Test.QuickCheck.Types.TH where
 
@@ -116,7 +118,8 @@ import GHC.Generics                (M1)
 import GHC.Generics                (Par1)
 import GHC.Generics                (Rec1)
 import GHC.Generics                (U1)
-import GHC.Generics                (Meta)
+import GHC.Generics                (Meta(..))
+import GHC.Generics                (FixityI(..))
 import GHC.IO.Buffer               (Buffer)
 import GHC.IO.Encoding             (BufferCodec)
 import GHC.IO.Encoding             (TextEncoding)
@@ -165,10 +168,232 @@ import Text.PrettyPrint
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import GHC.TypeLits (Nat, Symbol)
+import GHC.TypeLits -- (Nat, Symbol)
 import Test.QuickCheck.GenS
 import Data.Type.Equality
+import Data.Typeable
+import Language.Haskell.TH hiding (Type)
+import Language.Haskell.TH.Syntax hiding (Type)
 
+-- | A TemplateHaskell `Type` with kind @k@
+data TypeK k = TypeK { getTypeK :: TH.Type, typeKind :: Maybe Kind } deriving (Eq, Ord, Show, Lift)
+
+deriving instance Lift AnnTarget
+deriving instance Lift Bang
+deriving instance Lift Body
+deriving instance Lift Callconv
+deriving instance Lift Clause
+deriving instance Lift Con
+deriving instance Lift Dec
+deriving instance Lift Exp
+deriving instance Lift FamilyResultSig
+deriving instance Lift Fixity
+deriving instance Lift FixityDirection
+deriving instance Lift Foreign
+deriving instance Lift FunDep
+deriving instance Lift Guard
+deriving instance Lift Info
+deriving instance Lift InjectivityAnn
+deriving instance Lift Inline
+deriving instance Lift Lit
+deriving instance Lift Loc
+deriving instance Lift Match
+deriving instance Lift ModName
+deriving instance Lift Module
+deriving instance Lift ModuleInfo
+deriving instance Lift Name
+deriving instance Lift NameFlavour
+deriving instance Lift NameSpace
+deriving instance Lift OccName
+deriving instance Lift Overlap
+deriving instance Lift Pat
+deriving instance Lift Phases
+deriving instance Lift PkgName
+deriving instance Lift Pragma
+deriving instance Lift Range
+deriving instance Lift Role
+deriving instance Lift RuleBndr
+deriving instance Lift RuleMatch
+deriving instance Lift Safety
+deriving instance Lift SourceStrictness
+deriving instance Lift SourceUnpackedness
+deriving instance Lift Stmt
+deriving instance Lift TH.Type
+deriving instance Lift TyLit
+deriving instance Lift TySynEqn
+deriving instance Lift TyVarBndr
+deriving instance Lift TypeFamilyHead
+
+instance Lift a => Lift (Q a) where
+  lift = join . fmap Language.Haskell.TH.Syntax.lift
+
+
+-- | Convenience synonym
+type TypeKQ k = Q (TypeK k)
+
+
+-- Even simpler:
+
+-- type family F (a :: Nat) :: TyResult
+
+type family R (a :: Nat) :: Bool where
+  R a = 'True
+
+instance Enum (TypeK Nat) where
+  toEnum = undefined
+  fromEnum = undefined
+  pred = undefined
+
+zeroTK :: TypeK Nat
+zeroTK = undefined (TypeK (undefined 0) undefined)
+
+
+dropFamily :: Name -> DecsQ
+dropFamily name = do
+  info <- reify name
+  case info of
+    FamilyI (OpenTypeFamilyD tyHead)     _ -> dropFamilyHead name tyHead
+    FamilyI (ClosedTypeFamilyD tyHead _) _ -> dropFamilyHead name tyHead
+    other -> fail $ unwords [show name, "is not a type family, it is a:", show other]
+
+dropFamilyHead :: Name -> TypeFamilyHead -> DecsQ
+dropFamilyHead name' (TypeFamilyHead name tyVars resultSig _)
+  | name /= name' = fail $ unwords ["Given name is:", show name', "while reify gave:", show name]
+  | otherwise    = case (mapM bndrKind tyVars, familyResultKind resultSig) of
+                     (Just args, Just res) -> dropFamily' name args res
+                     other                 -> fail (show other)
+
+-- newName :: String -> Q Name
+
+funcT :: [TH.Type] -> TH.Type
+funcT (x:y:zs) = AppT (AppT ArrowT x) (funcT (y:zs))
+funcT (x:ys)   = x
+
+proxyFT :: TH.Type -> [TH.Type] -> TH.Type
+proxyFT f ts = AppT (ConT ''Proxy) (foldl AppT f ts)
+
+-- appsT :: [TH.Type] -> TH.Type
+-- appsT (x:y:zs) = (AppT x (appsT zs)
+-- appsT (x:ys)
+
+-- (AppT (ConT Data.Proxy.Proxy) (AppT (AppT (ConT Data.Either.Either) (ConT GHC.Types.Bool)) (ConT GHC.Integer.Type.Integer)))
+
+mtt :: String -> Dec
+mtt s = ValD (VarP (mkName "tt")) (NormalB . LitE . StringL $ s) []
+
+
+-- (AppT (AppT ArrowT (TupleT 0)) (AppT (AppT ArrowT (ConT ''Int)) (ConT ''Bool)))
+
+-- F (a :: k0) (b :: k1) (c :: kr)
+-- $(dropFamily 'F) :: TypeK k0 -> TypeK k1 -> Name -> DecsQ
+-- $($(dropFamily 'F) (TypeK (a :: k0)) (TypeK (b :: k1)) Name) :: Proxy (F a b)
+dropFamily' :: Name -> [Kind] -> Kind -> DecsQ
+dropFamily' name args res = return [mtt (show args), sig, func]
+  where
+    sig = SigD droppedName $ funcT $ (AppT (ConT (mkName "TypeK")) <$> args) ++ [ConT ''Name, ConT ''Dec]
+    func = FunD droppedName . (:[]) $ clause
+    droppedName = mkName $ "dropped_" ++ until (not . ('.' `elem`)) tail (show name)
+    clause = Clause pats (NormalB body) []
+    n = length args
+    xs = (mkName . ('x':) . show) <$> [0..n-1]
+    pats = ((\x -> ConP 'TypeK [VarP x, WildP]) <$> xs) ++ [VarP (mkName "name")]
+    body = AppE (AppE (ConE 'SigD) (VarE (mkName "name"))) folding
+    folding = AppE (VarE 'proxyFT) (ConE 'ConT `AppE` (VarE 'mkName `AppE` LitE (StringL (show name)))) `AppE` (ListE . fmap VarE $ xs)
+    -- folding = AppE start list
+    start = AppE (AppE (VarE 'foldl) (ConE 'AppT)) (AppE (ConE 'ConT) ( VarE 'mkName `AppE` LitE (StringL (show 'Proxy))))
+    list = InfixE (Just (AppE (ConE 'ConT) ( VarE 'mkName `AppE` LitE (StringL (show name))   ))) (ConE '(:)) (Just (ListE . fmap VarE $ xs))
+
+
+-- | Apply (def :: X (t :: k)) to something that can be lifted.
+appTK :: Lift t => t -> TypeK k -> ExpQ
+appTK f (TypeK t _) = [| f (def :: $(conT ''X `appT` return t)) |]
+
+appTKQ :: Lift t => Q t -> TypeKQ k -> ExpQ
+appTKQ = (join .) .liftM2 appTK
+
+-- reflexive :: TypeKQ k -> TH.ExpQ
+-- reflexive x = x >>= \(TypeK t _) -> [| let result = $([| reflexive_ |])(def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
+
+-- reflexive_ :: (X (a :: k)) -> X (Reflexive a)
+-- reflexive_ _ = def
+
+-- type family IsTrue (a :: Bool) :: TyResult where
+--   IsTrue a = a === 'True
+
+-- isTrue :: TypeKQ Bool -> TH.ExpQ
+-- isTrue x = x >>= \(TypeK t _) -> [| let result = isTrue_ (def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
+
+-- isTrue_ :: X (a :: Bool) -> X (IsTrue a)
+-- isTrue_ _ = def
+
+
+
+-- mkName ("dropped_" ++ show name) :: tos (ConT 'TypeK <$> args ++ [DecsQ])
+
+-- mkName ("dropped_" ++ show name) x0 x1 .. xn = appTs (ConT 'Proxy : xs)
+
+-- (foldl AppT (ConT (mkName "Data.Proxy.Proxy")) ((ConT (mkName "Test.QuickCheck.Types.Reflexive")) : [ConT ''Int]))
+
+-- FunD Name [Clause]
+-- { f p1 p2 = b where decs }
+
+-- Clause [Pat] Body [Dec]
+-- f { p1 p2 = body where decs }
+
+-- pats = (\x -> ConP 'TypeK [VarP x, WildP]) <$> xs
+
+-- body = NormalB Exp
+-- f p { = e } where ds
+
+-- foldl AppE (
+
+-- λ> runQ [| \(TypeK t _) -> (+) t |]
+-- LamE [ConP Test.QuickCheck.Types.TH.TypeK [VarP t_0,WildP]] (AppE (VarE GHC.Num.+) (VarE t_0))
+
+-- foldl AppE (VarE (mkName "hi")) (map (LitE . IntegerL) [1..4])
+
+
+familyResultKind :: FamilyResultSig -> Maybe Kind
+familyResultKind (KindSig  kind) = Just kind
+familyResultKind (NoSig        ) = Nothing
+familyResultKind (TyVarSig bndr) = bndrKind bndr
+
+bndrKind :: TyVarBndr -> Maybe Kind
+bndrKind (PlainTV _) = Nothing
+bndrKind (KindedTV _ kind) = Just kind
+
+-- TypeFamilyHead Name [TyVarBndr] FamilyResultSig (Maybe InjectivityAnn)
+
+-- testF :: TypeK Nat -> DecsQ
+-- testF = do
+--   name <- randName "testF_"
+--   makeTest name family nat
+
+-- testF_213 = Proxy :: Proxy (F n)
+-- testF_213 = Proxy
+
+-- checkTestF_213_123 :: Q Decs
+-- checkTestF_213_123 = do
+--   reify 'testF_213
+--   if Type is Success
+--      then empty Dec
+--      else case shrinkLastType typeK_Nat_213 of
+--             (x:xs) -> somehow shrink?
+--             []     -> dropD 'testF_213
+
+-- dropD :: Name -> DecQ
+-- dropD = just TH of dropping name
+
+-- Much, much simpler solution: pipe stdin to ghci!
+-- It'll require some parsing, but it'll also be a lot easier than the mess of a lower-level interface.
+
+
+
+-- TODO: Use TemplateHaskell to generate TypeK's and ArbitraryS instances.
+-- Use GHC to make `dropFamily` function: TypeK k0 -> TypeK k1 -> StackGHC Result
+
+-- typeOf (Proxy :: Proxy (CmpNat n n')) == typeOf (Proxy :: Proxy 'LT) = Just (SomeNatCmp n' n)
+--                             | otherwise = Nothing
 
 -- TODO: Need to make: Arbitrary, CoArbitrary, using GenS to prevent blowup
 -- Cleanup imports
@@ -179,16 +404,12 @@ import Data.Type.Equality
 -- TODO: GenS elements/oneOf need to decrement state when traversing!
 
 
--- | A TemplateHaskell `Type` with kind @k@
-data TypeK k = TypeK { getTypeK :: TH.Type, typeKind :: Maybe Kind } deriving (Eq, Ord, Show)
 
 -- | There has to be a better way to defined `ppr` for this
 instance Ppr (TypeK k) where
   ppr (TypeK ty (Just kind)) = liftM2 (<>) (liftM2 (<>) (liftM2 (<>) (return "TypeK ") $ ppr ty) $ return " ") $ ppr kind
   ppr (TypeK ty (_        )) = liftM2 (<>) (liftM2 (<>) (return "TypeK ") $ ppr ty) $ return " "
 
--- | Convenience synonym
-type TypeKQ k = Q (TypeK k)
 
 
 -- TODO: Fail better
@@ -206,11 +427,11 @@ typeKs :: (ExpQ, X k, [Name]) -> [TypeKQ k]
 typeKs (e, x, ns) = typeK e x <$> ns
 
 -- | `fmap` is likely impossible. Here to have `Applicative`
-instance Functor TypeK where fmap = undefined
+instance Functor TypeK where fmap = error "TypeK's fmap is unimplemented."
 
 -- | `pure` is likely impossible
 instance Applicative TypeK where
-  pure = undefined
+  pure = error "TypeK's pure is unimplemented."
 
   (<*>) (TypeK tyf kf) (TypeK tyx kx) = TypeK (AppT tyf tyx) Nothing -- Nothing should eventually always be Just
 
@@ -292,8 +513,75 @@ infixl 1 $~>
 instance ArbitraryS (TypeKQ Bool) where
   arbitraryS' = elementS bool
 
-instance ArbitraryS (TypeKQ Meta) where
+instance ArbitraryS (TypeKQ k) => ArbitraryS (TypeKQ (Maybe k)) where
+  arbitraryS' = oneofS
+    [ genS nothing
+    , genS just $~> (Proxy :: Proxy k)
+    ]
+
+nothing :: TypeKQ (Maybe k)
+nothing = fin $ typeKs ([| def :: X( Maybe k ) |],
+                           def :: X( Maybe k )   ,
+                           [ 'Nothing ])
+  where
+    fin = fmap (\(TypeK (ConT x) y) -> TypeK (PromotedT x) y) . head
+
+just :: TypeKQ (k -> Maybe k)
+just = fin $ typeKs ([| def :: X( k -> Maybe k ) |],
+                        def :: X( k -> Maybe k )   ,
+                        [ 'Just ])
+  where
+    fin = fmap (\(TypeK (ConT x) y) -> TypeK (PromotedT x) y) . head
+
+instance ArbitraryS (TypeKQ FixityI) where
   arbitraryS' = undefined
+
+instance ArbitraryS (TypeKQ SourceUnpackedness) where
+  arbitraryS' = undefined
+
+instance ArbitraryS (TypeKQ SourceStrictness) where
+  arbitraryS' = undefined
+
+instance ArbitraryS (TypeKQ DecidedStrictness) where
+  arbitraryS' = undefined
+
+-- | `return` with type constrained for use with `$~>`
+genS :: a -> GenS a
+genS = return
+
+
+instance ArbitraryS (TypeKQ Meta) where
+  arbitraryS' = oneofS
+    [ genS metaData $~> (Proxy :: Proxy Symbol) $~> (Proxy :: Proxy Symbol) $~> (Proxy :: Proxy Symbol) $~> (Proxy :: Proxy Bool)
+    , genS metaCons $~> (Proxy :: Proxy Symbol) $~> (Proxy :: Proxy FixityI) $~> (Proxy :: Proxy Bool)
+    , genS metaSel $~> (Proxy :: Proxy (Maybe Symbol)) $~> (Proxy :: Proxy SourceUnpackedness) $~> (Proxy :: Proxy SourceStrictness) $~> (Proxy :: Proxy DecidedStrictness)
+    ]
+
+metaData :: TypeKQ (Symbol -> Symbol -> Symbol -> Bool -> Meta)
+metaData = fin $ typeKs ([| def :: X( Symbol -> Symbol -> Symbol -> Bool -> Meta ) |],
+                            def :: X( Symbol -> Symbol -> Symbol -> Bool -> Meta )   ,
+                            [ 'MetaData ])
+  where
+    fin = fmap (\(TypeK (ConT x) y) -> TypeK (PromotedT x) y) . head
+
+metaCons :: TypeKQ (Symbol -> FixityI -> Bool -> Meta)
+metaCons = fin $ typeKs ([| def :: X( Symbol -> FixityI -> Bool -> Meta ) |],
+                            def :: X( Symbol -> FixityI -> Bool -> Meta )   ,
+                            [ 'MetaCons ])
+  where
+    fin = fmap (\(TypeK (ConT x) y) -> TypeK (PromotedT x) y) . head
+
+metaSel :: TypeKQ (Maybe Symbol -> SourceUnpackedness -> SourceStrictness -> DecidedStrictness -> Meta)
+metaSel = fin $ typeKs ([| def :: X( Maybe Symbol -> SourceUnpackedness -> SourceStrictness -> DecidedStrictness -> Meta) |],
+                           def :: X( Maybe Symbol -> SourceUnpackedness -> SourceStrictness -> DecidedStrictness -> Meta)   ,
+                           [ 'MetaSel ])
+  where
+    fin = fmap (\(TypeK (ConT x) y) -> TypeK (PromotedT x) y) . head
+
+-- | Should be uninhabited?
+instance Default Meta where
+  def = MetaData undefined undefined undefined False
+
 
 instance ArbitraryS (TypeKQ (Type -> Meta -> (Type -> Type) -> Type -> Type)) where
   arbitraryS' = elementS meta
