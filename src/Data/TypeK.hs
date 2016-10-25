@@ -190,6 +190,13 @@ data TypeK k = TypeK { getTypeK :: TH.Type, typeKind :: Maybe Kind } deriving (E
 type TypeKQ k = Q (TypeK k)
 
 
+-- | Apply (def :: Proxy (t :: k)) to something that can be lifted.
+-- (Unsafe, but not too so since it's just TemplateHaskell.)
+appTK :: ExpQ -> TypeKQ k -> ExpQ
+appTK f tk = [| $f (def :: Proxy $(getTypeK <$> tk)) |]
+
+
+
 -- | Unimplemented
 instance Enum (TypeK Nat) where
   toEnum = undefined

@@ -3,6 +3,8 @@ module Data.Default.Orphans where
 import Data.Default
 import Test.QuickCheck.Poly
 import Numeric.Natural
+import Data.Proxy
+
 
 -- | Returns `False`
 instance Default Bool where
@@ -43,4 +45,9 @@ instance Default OrdB where
 -- | Returns @0@
 instance Default OrdC where
   def = OrdC 0
+
+instance Default (Proxy (a :: k)) where
+  def = Proxy
+
+
 

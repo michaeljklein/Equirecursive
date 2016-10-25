@@ -3,14 +3,13 @@
 
 module Test.QuickCheck.Types where
 
-import Data.Type.Equality
-import GHC.TypeLits
 import Data.Kind
+import Data.TyResult
+import Data.Type.Equality
+import Data.Type.Family.Drop
 import Data.X
 import Data.X.Pair
-
-import Test.QuickCheck.Types.TH
-import Data.TyResult
+import GHC.TypeLits
 
 
 -- | Type-level `mod`, though not very efficient

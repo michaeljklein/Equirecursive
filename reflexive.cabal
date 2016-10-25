@@ -35,24 +35,25 @@ library
                      , Data.Recurse
                      , Data.Recurse.Equality
                      , Data.Recurse.Recursing
+                     , Data.TyResult
+                     , Data.Type.Family.Drop
                      , Data.Type.Test
                      , Data.Type.Test.Assert
                      , Data.Type.Test.Internal
                      , Data.Type.Test.ShrinkType
                      , Data.Type.Test.Star
                      , Data.Type.Test.Star.Utils
-                     , Test.QuickCheck.GenS
                      , Data.Type.Test.TH
+                     , Data.TypeK
                      , Data.X.Drop
                      , Data.X.Folding
                      , Data.X.Map
                      , Data.X.Pair
+                     , Language.Haskell.TH.Utils
+                     , Test.QuickCheck.GenS
                      , Test.QuickCheck.Types
                      , Test.QuickCheck.Types.TH
                      , Test.QuickCheck.Types.Test
-                     , Data.TypeK
-                     , Data.TyResult
-                     , Language.Haskell.TH.Utils
 
   ghc-options:         -fprint-unicode-syntax -fwarn-unused-imports
   build-depends:       base >= 4.9.0.0
