@@ -120,8 +120,6 @@ defx = def
 
 type TExpQ a = TH.Q (TH.TExp a)
 
--- appTypeK :: TypeK k ->
-
 reflexive :: TypeKQ k -> TH.ExpQ
 reflexive x = x >>= \(TypeK t _) -> [| let result = $([| reflexive_ |])(def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
 
@@ -137,7 +135,10 @@ isTrue x = x >>= \(TypeK t _) -> [| let result = isTrue_ (def :: $(TH.conT ''X `
 isTrue_ :: X (a :: Bool) -> X (IsTrue a)
 isTrue_ _ = def
 
-$((dropFamily ''Reflexive))
+$(fmap return ( (mtt <$> (show <$> TH.reify ''F))))
+
+
+-- $((dropFamily ''Reflexive))
 
 -- $(dropped_Reflexive undefined undefined)
 -- reflexive :: Reflexive (a :: k)

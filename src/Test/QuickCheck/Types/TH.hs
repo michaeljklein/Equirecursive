@@ -174,6 +174,8 @@ import Data.Type.Equality
 import Data.Typeable
 import Language.Haskell.TH hiding (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
+import Data.Maybe
+
 
 -- | A TemplateHaskell `Type` with kind @k@
 data TypeK k = TypeK { getTypeK :: TH.Type, typeKind :: Maybe Kind } deriving (Eq, Ord, Show, Lift)
@@ -273,43 +275,115 @@ proxyFT :: TH.Type -> [TH.Type] -> TH.Type
 proxyFT f ts = AppT (ConT ''Proxy) (foldl AppT f ts)
 
 -- appsT :: [TH.Type] -> TH.Type
--- appsT (x:y:zs) = (AppT x (appsT zs)
+-- appsT (x:y:zs) = (AppT x (appsT zs))
 -- appsT (x:ys)
 
 -- (AppT (ConT Data.Proxy.Proxy) (AppT (AppT (ConT Data.Either.Either) (ConT GHC.Types.Bool)) (ConT GHC.Integer.Type.Integer)))
 
+-- | makes @tt = "given string"@. for debugging non-IO splices.
 mtt :: String -> Dec
 mtt s = ValD (VarP (mkName "tt")) (NormalB . LitE . StringL $ s) []
 
+instance Default (Proxy (a :: k)) where
+  def = Proxy
 
--- (AppT (AppT ArrowT (TupleT 0)) (AppT (AppT ArrowT (ConT ''Int)) (ConT ''Bool)))
 
--- F (a :: k0) (b :: k1) (c :: kr)
--- $(dropFamily 'F) :: TypeK k0 -> TypeK k1 -> Name -> DecsQ
--- $($(dropFamily 'F) (TypeK (a :: k0)) (TypeK (b :: k1)) Name) :: Proxy (F a b)
+type family F (a :: k0) (b :: k1) :: k
+
+
 dropFamily' :: Name -> [Kind] -> Kind -> DecsQ
-dropFamily' name args res = return [mtt (show args), sig, func]
+dropFamily' name args res = undefined
+
+-- | foldl :: (b -> a -> b) -> b -> [a] -> b
+-- Why? So that the type of the function is not defaulted.
+foldlE :: ExpQ -> ExpQ -> [ExpQ] -> ExpQ
+foldlE f z []     = z
+foldlE f z (x:xs) = foldlE f [| $f $z $x |] xs
+
+
+-- foldl ((. fmap (flip TypeK def)) . appTK)
+--   ∷ Foldable t ⇒ ExpQ → t (Q Language.Haskell.TH.Type) → ExpQ
+
+-- LamE [VarP x0_36,VarP x1_37] (ListE [
+-- AppE (AppE (VarE GHC.Base.fmap) (VarE Test.QuickCheck.Types.TH.getTypeK)) (VarE x0_36),
+-- AppE (AppE (VarE GHC.Base.fmap) (VarE Test.QuickCheck.Types.TH.getTypeK)) (VarE x1_37)])
+
+-- \x0 x1 -> [fmap getTypeK x0, fmap getTypeK x1]
+
+-- \x0 x1 -> foldl () (dropF_ ) [fmap getTypeK x0, fmap getTypeK x1]
+
+-- | Given:
+-- @
+--  F (a0 :: k0) (a1 :: k1) .. (an :: kn) :: k
+-- @
+-- it outputs:
+-- @
+--  it :: TypeKQ k0 -> .. TypeKQ k1 -> QExp
+--  it = \(TypeK t0 _) .. (TypeK tn _) -> [| $(dropF ..) (def :: Proxy $t0) .. (def :: Proxy $tn) |]
+-- @
+dropF :: Name -> [TyVarBndr] -> Kind -> ExpQ
+dropF fam args res = [| lamE (fmap varP xs) (foldl ((. fmap (flip TypeK def)) . appTK) (return droppedF) $ts) |]
   where
-    sig = SigD droppedName $ funcT $ (AppT (ConT (mkName "TypeK")) <$> args) ++ [ConT ''Name, ConT ''Dec]
-    func = FunD droppedName . (:[]) $ clause
-    droppedName = mkName $ "dropped_" ++ until (not . ('.' `elem`)) tail (show name)
-    clause = Clause pats (NormalB body) []
-    n = length args
-    xs = (mkName . ('x':) . show) <$> [0..n-1]
-    pats = ((\x -> ConP 'TypeK [VarP x, WildP]) <$> xs) ++ [VarP (mkName "name")]
-    body = AppE (AppE (ConE 'SigD) (VarE (mkName "name"))) folding
-    folding = AppE (VarE 'proxyFT) (ConE 'ConT `AppE` (VarE 'mkName `AppE` LitE (StringL (show name)))) `AppE` (ListE . fmap VarE $ xs)
-    -- folding = AppE start list
-    start = AppE (AppE (VarE 'foldl) (ConE 'AppT)) (AppE (ConE 'ConT) ( VarE 'mkName `AppE` LitE (StringL (show 'Proxy))))
-    list = InfixE (Just (AppE (ConE 'ConT) ( VarE 'mkName `AppE` LitE (StringL (show name))   ))) (ConE '(:)) (Just (ListE . fmap VarE $ xs))
+    (argKinds, droppedF) = dropF_ fam args res
+    ts = listE . fmap (\x -> appE (varE 'fmap `appE` varE 'getTypeK) (varE x)) $ xs
+    xs = (mkName . ('x':). show) <$> [1..length args]
+
+-- There's a scope error, but I know how to fix it: $ts gets instantiated before the lambda vars are.
+
+-- | Cool, it works. Given:
+-- @
+--  F (a0 :: k0) (a1 :: k1) .. (an :: kn) :: k
+-- @
+-- it outputs:
+-- @
+--  ( [k0 .. kn],
+--     def :: forall k0 .. kn k (a0 :: k0) .. (an :: kn). Proxy (a0 :: k0) -> .. -> Proxy (an :: kn) -> Proxy (F (a0 :: k0) .. (an :: kn))
+--  )
+-- @
+-- Where any non-polymorpic arguments /should/ be handled gracefully.
+dropF_ :: Name -> [TyVarBndr] -> Kind -> ([Kind], Exp)
+dropF_ fam args res = (kinds', expr)
+  where
+    kinds'  = kinds . fmap unBndr $ args
+    expr    = SigE (VarE 'def) . foralls args res . funcT $ sigArgs ++ [resultT]
+    resultT = proxyFT (ConT fam) sigArgs
+    sigArgs = fmap (uncurry (maybe <*> SigT) . first VarT . unBndr) args
 
 
--- | Apply (def :: X (t :: k)) to something that can be lifted.
-appTK :: Lift t => t -> TypeK k -> ExpQ
-appTK f (TypeK t _) = [| f (def :: $(conT ''X `appT` return t)) |]
+-- | Make the forall from what's implicit in a list of `TyVarBndr`s and an additional `Kind`
+foralls :: [TyVarBndr] -> Kind -> TH.Type -> TH.Type
+foralls tys kind = ForallT (forallKinds ++ tys) []
+  where
+    forallKinds = catMaybes . fmap (fmap PlainTV . polyKindName) $ ks
+    ks = kind : kinds (unBndr <$> tys)
 
-appTKQ :: Lift t => Q t -> TypeKQ k -> ExpQ
-appTKQ = (join .) .liftM2 appTK
+
+-- | Return `Just` the name if the `Kind` is polymorphic
+polyKindName :: Kind -> Maybe Name
+polyKindName (VarT name) = Just name
+polyKindName  _          = Nothing
+
+
+-- | Just the `Kind`s
+kinds :: [(Name, Maybe Kind)] -> [Kind]
+kinds = catMaybes . fmap snd
+
+
+-- | Replace `TyVarBndr` with an easier-to-use type.
+unBndr :: TyVarBndr -> (Name, Maybe Kind)
+unBndr (PlainTV  name     ) = (name, def   )
+unBndr (KindedTV name kind) = (name, return kind)
+
+exprr = SigE (VarE 'def) (ForallT [PlainTV (mkName "a")] [] (AppT (AppT ArrowT (AppT (ConT ''Proxy) (VarT (mkName "a")))) (AppT (ConT ''Proxy) (AppT (ConT ''Maybe) (VarT (mkName "a"))))))
+
+ty1 = (return $ TypeK(ConT ''Int)def)
+
+
+-- | Apply (def :: Proxy (t :: k)) to something that can be lifted.
+-- (Unsafe, but not too so since it's just TemplateHaskell.)
+appTK :: ExpQ -> TypeKQ k -> ExpQ
+appTK f tk = [| $f (def :: Proxy $(getTypeK <$> tk)) |]
+
 
 -- reflexive :: TypeKQ k -> TH.ExpQ
 -- reflexive x = x >>= \(TypeK t _) -> [| let result = $([| reflexive_ |])(def :: $(TH.conT ''X `TH.appT` return t)) in if success result then True else False |]
