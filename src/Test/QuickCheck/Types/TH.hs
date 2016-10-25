@@ -301,17 +301,6 @@ foldlE f z []     = z
 foldlE f z (x:xs) = foldlE f [| $f $z $x |] xs
 
 
--- foldl ((. fmap (flip TypeK def)) . appTK)
---   ∷ Foldable t ⇒ ExpQ → t (Q Language.Haskell.TH.Type) → ExpQ
-
--- LamE [VarP x0_36,VarP x1_37] (ListE [
--- AppE (AppE (VarE GHC.Base.fmap) (VarE Test.QuickCheck.Types.TH.getTypeK)) (VarE x0_36),
--- AppE (AppE (VarE GHC.Base.fmap) (VarE Test.QuickCheck.Types.TH.getTypeK)) (VarE x1_37)])
-
--- \x0 x1 -> [fmap getTypeK x0, fmap getTypeK x1]
-
--- \x0 x1 -> foldl () (dropF_ ) [fmap getTypeK x0, fmap getTypeK x1]
-
 -- | Given:
 -- @
 --  F (a0 :: k0) (a1 :: k1) .. (an :: kn) :: k
@@ -322,13 +311,22 @@ foldlE f z (x:xs) = foldlE f [| $f $z $x |] xs
 --  it = \(TypeK t0 _) .. (TypeK tn _) -> [| $(dropF ..) (def :: Proxy $t0) .. (def :: Proxy $tn) |]
 -- @
 dropF :: Name -> [TyVarBndr] -> Kind -> ExpQ
-dropF fam args res = [| lamE (fmap varP xs) (foldl ((. fmap (flip TypeK def)) . appTK) (return droppedF) $ts) |]
+dropF fam args res = sigE dropped (return droppedType)
   where
+    droppedType = funcT $ fmap (AppT (ConT ''TypeKQ)) argKinds ++ [ConT ''ExpQ]
+    dropped = lamE (fmap varP xs) applied
+    applied = [| foldl ((. fmap (flip TypeK def)) . appTK)|] `appE` [| return droppedF |] `appE` ts
     (argKinds, droppedF) = dropF_ fam args res
     ts = listE . fmap (\x -> appE (varE 'fmap `appE` varE 'getTypeK) (varE x)) $ xs
     xs = (mkName . ('x':). show) <$> [1..length args]
 
--- There's a scope error, but I know how to fix it: $ts gets instantiated before the lambda vars are.
+-- There's a scope error, but I know what it it: $ts gets instantiated before the lambda vars are.
+-- I think the solution is to rework appTK, so that ts doesn't need to get instantiated.
+-- appTK currently has type: ExpQ -> TypeKQ k -> ExpQ. Hmmmmmm.... It can be lifted to ExpQ -> Type -> ExpQ
+-- But we really need it to do something like: ExpQ function -> ExpQ args -> ExpQ result.
+-- Remember, we need to have: Type -> Proxy $Type
+-- Oh, well that would be nice: I think I've simply forgotten the dual scopes: dropF generates a function that uses appTK, it should not use it itself! I must be tired.
+
 
 -- | Cool, it works. Given:
 -- @
@@ -345,7 +343,7 @@ dropF_ :: Name -> [TyVarBndr] -> Kind -> ([Kind], Exp)
 dropF_ fam args res = (kinds', expr)
   where
     kinds'  = kinds . fmap unBndr $ args
-    expr    = SigE (VarE 'def) . foralls args res . funcT $ sigArgs ++ [resultT]
+    expr    = SigE (VarE 'def) . foralls args res . funcT $ fmap (AppT (ConT ''Proxy)) sigArgs ++ [resultT]
     resultT = proxyFT (ConT fam) sigArgs
     sigArgs = fmap (uncurry (maybe <*> SigT) . first VarT . unBndr) args
 
