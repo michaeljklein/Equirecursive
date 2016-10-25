@@ -50,7 +50,11 @@ library
                      , Test.QuickCheck.Types
                      , Test.QuickCheck.Types.TH
                      , Test.QuickCheck.Types.Test
-  ghc-options:         -fprint-unicode-syntax
+                     , Data.TypeK
+                     , Data.TyResult
+                     , Language.Haskell.TH.Utils
+
+  ghc-options:         -fprint-unicode-syntax -fwarn-unused-imports
   build-depends:       base >= 4.9.0.0
                      , comonad >= 4.3
                      , contravariant >= 1.4

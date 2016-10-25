@@ -1,40 +1,11 @@
 module Data.X.Drop where
 
-import Control.Monad
--- import Data.Exists
-import Data.IntSet (IntSet)
-import Data.Kind
-import Data.Proxy
-import Data.Sequence (Seq)
-import Data.Type.Equality
-import Data.Type.Bool
-import Data.Typeable
-import Data.Word
-import Data.X
-import GHC.TypeLits
-import Numeric.Natural
-import Test.QuickCheck
-import Test.QuickCheck.Poly
 import Control.Comonad
-import Data.Foldable (toList)
-import Data.Default
-import Test.QuickCheck.Property (succeeded)
-import Data.X.Pair
 import Data.Bifunctor
-import Unsafe.Coerce
-
--- class DropX2  (a :: k   ) where
---   type Drop2  (k :: Type) :: Type
---   dropX2 :: X (a :: k   ) -> Drop2 k
-
--- instance DropX2 ('True :: Bool) where
---   type Drop2 Bool = Bool
---   dropX2 _ = True
-
--- instance DropX2 ('False :: Bool) where
---   type Drop2 Bool = Bool
---   dropX2 _ = False
-
+import Data.Kind
+import Data.X
+import Data.X.Pair
+import GHC.TypeLits
 
 
 -- | Drop a type-level object down to the value level.
@@ -44,12 +15,6 @@ class  DropX (a :: k) where
 
   -- | Drop the type.
   dropX ::  X a -> Drop a
-
--- instance Typeable a => DropX (a :: Bool) where
---   type   Drop  (a :: Bool) = Bool
---   dropX x | typeOf x == typeOf (def :: X 'True ) = True
---           | typeOf x == typeOf (def :: X 'False) = False
---           | otherwise                           = error "Data.X.Drop.dropX: (a :: Bool), but a is not 'True or 'False"
 
 -- | Drop `True`
 instance DropX 'True where
