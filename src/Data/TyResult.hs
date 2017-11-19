@@ -13,17 +13,17 @@ import Language.Haskell.TH.Syntax (TExp(..))
 data TyResult = TySuccess ErrorMessage | TyFails ErrorMessage
 
 -- | Get whether a type with kind `TyResult` is success.
-class Success (r :: TyResult) where
+class SuccessTy (r :: TyResult) where
   -- | Return `True` if `TySuccess`
-  success :: forall proxy. proxy r -> Bool
+  successTy :: forall proxy. proxy r -> Bool
 
 -- | Return `True`
-instance Success ('TySuccess e) where
-  success _ = True
+instance SuccessTy ('TySuccess e) where
+  successTy _ = True
 
 -- | Return `False`
-instance Success ('TyFails e) where
-  success _ = False
+instance SuccessTy ('TyFails e) where
+  successTy _ = False
 
 -- | Raise the type error contained in a `TyFails`
 class DropTyError (r :: TyResult) where
